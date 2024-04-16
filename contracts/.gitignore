@@ -15,3 +15,6 @@ docs/
 data/
 
 lib/
+
+# Snapshot state outputs
+script/output/
