@@ -3,6 +3,7 @@
 RPC_URL=http://localhost:8545
 # address: 0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266 (anvil - account 0)
 PRIVATE_KEY=0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80
+# retrieved from config-files/keys/test.ecdsa.key.json
 OPERATOR_ADDRESS=0x860B6912C2d0337ef05bbC89b0C2CB6CbAEAB4A5
 
 # cd to the directory of this script so that this can be run from anywhere
