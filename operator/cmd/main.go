@@ -6,7 +6,7 @@ import (
 	"log"
 	"os"
 
-	"github.com/urfave/cli"
+	"github.com/urfave/cli/v2"
 
 	"github.com/zees-dev/blockless-avs/core/config"
 	"github.com/zees-dev/blockless-avs/operator"
@@ -32,7 +32,7 @@ func main() {
 func operatorMain(ctx *cli.Context) error {
 
 	log.Println("Initializing Operator")
-	configPath := ctx.GlobalString(config.ConfigFileFlag.Name)
+	configPath := ctx.String(config.ConfigFileFlag.Name)
 	nodeConfig := types.NodeConfig{}
 	err := sdkutils.ReadYamlConfig(configPath, &nodeConfig)
 	if err != nil {

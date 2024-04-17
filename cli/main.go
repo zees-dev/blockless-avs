@@ -4,7 +4,7 @@ import (
 	"log"
 	"os"
 
-	"github.com/urfave/cli"
+	"github.com/urfave/cli/v2"
 	"github.com/zees-dev/blockless-avs/cli/actions"
 	"github.com/zees-dev/blockless-avs/core/config"
 )
@@ -13,7 +13,7 @@ func main() {
 	app := cli.NewApp()
 
 	app.Flags = []cli.Flag{config.ConfigFileFlag}
-	app.Commands = []cli.Command{
+	app.Commands = []*cli.Command{
 		{
 			Name:    "register-operator-with-eigenlayer",
 			Aliases: []string{"rel"},
@@ -22,16 +22,16 @@ func main() {
 		},
 		{
 			Name:    "deposit-into-strategy",
-			Aliases: []string{"d"},
+			Aliases: []string{"dis"},
 			Usage:   "deposit tokens into a strategy",
 			Action:  actions.DepositIntoStrategy,
 			Flags: []cli.Flag{
-				cli.StringFlag{
+				&cli.StringFlag{
 					Name:     "strategy-addr",
 					Usage:    "Address of Strategy contract to deposit into",
 					Required: true,
 				},
-				cli.StringFlag{
+				&cli.StringFlag{
 					Name:     "amount",
 					Usage:    "amount of tokens to deposit into strategy",
 					Required: true,
@@ -40,13 +40,13 @@ func main() {
 		},
 		{
 			Name:    "register-operator-with-avs",
-			Aliases: []string{"r"},
+			Aliases: []string{"rowa"},
 			Usage:   "registers bls keys with pubkey-compendium, opts into slashing by avs service-manager, and registers operators with avs registry",
 			Action:  actions.RegisterOperatorWithAvs,
 		},
 		{
 			Name:    "deregister-operator-with-avs",
-			Aliases: []string{"d"},
+			Aliases: []string{"dowa"},
 			Action: func(ctx *cli.Context) error {
 				log.Fatal("Command not implemented.")
 				return nil
@@ -54,7 +54,7 @@ func main() {
 		},
 		{
 			Name:    "print-operator-status",
-			Aliases: []string{"s"},
+			Aliases: []string{"pos"},
 			Usage:   "prints operator status as viewed from incredible squaring contracts",
 			Action:  actions.PrintOperatorStatus,
 		},

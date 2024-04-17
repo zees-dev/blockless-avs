@@ -8,7 +8,7 @@ import (
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/crypto"
-	"github.com/urfave/cli"
+	"github.com/urfave/cli/v2"
 
 	"github.com/Layr-Labs/eigensdk-go/chainio/clients/eth"
 	"github.com/Layr-Labs/eigensdk-go/chainio/txmgr"
@@ -66,13 +66,13 @@ type IncredibleSquaringContractsRaw struct {
 func NewConfig(ctx *cli.Context) (*Config, error) {
 
 	var configRaw ConfigRaw
-	configFilePath := ctx.GlobalString(ConfigFileFlag.Name)
+	configFilePath := ctx.String(ConfigFileFlag.Name)
 	if configFilePath != "" {
 		sdkutils.ReadYamlConfig(configFilePath, &configRaw)
 	}
 
 	var credibleSquaringDeploymentRaw IncredibleSquaringDeploymentRaw
-	credibleSquaringDeploymentFilePath := ctx.GlobalString(CredibleSquaringDeploymentFileFlag.Name)
+	credibleSquaringDeploymentFilePath := ctx.String(CredibleSquaringDeploymentFileFlag.Name)
 	if _, err := os.Stat(credibleSquaringDeploymentFilePath); errors.Is(err, os.ErrNotExist) {
 		panic("Path " + credibleSquaringDeploymentFilePath + " does not exist")
 	}
@@ -95,7 +95,7 @@ func NewConfig(ctx *cli.Context) (*Config, error) {
 		return nil, err
 	}
 
-	ecdsaPrivateKeyString := ctx.GlobalString(EcdsaPrivateKeyFlag.Name)
+	ecdsaPrivateKeyString := ctx.String(EcdsaPrivateKeyFlag.Name)
 	if ecdsaPrivateKeyString[:2] == "0x" {
 		ecdsaPrivateKeyString = ecdsaPrivateKeyString[2:]
 	}
@@ -154,21 +154,21 @@ func (c *Config) validate() {
 
 var (
 	/* Required Flags */
-	ConfigFileFlag = cli.StringFlag{
+	ConfigFileFlag = &cli.StringFlag{
 		Name:     "config",
 		Required: true,
 		Usage:    "Load configuration from `FILE`",
 	}
-	CredibleSquaringDeploymentFileFlag = cli.StringFlag{
+	CredibleSquaringDeploymentFileFlag = &cli.StringFlag{
 		Name:     "credible-squaring-deployment",
 		Required: true,
 		Usage:    "Load credible squaring contract addresses from `FILE`",
 	}
-	EcdsaPrivateKeyFlag = cli.StringFlag{
+	EcdsaPrivateKeyFlag = &cli.StringFlag{
 		Name:     "ecdsa-private-key",
 		Usage:    "Ethereum private key",
 		Required: true,
-		EnvVar:   "ECDSA_PRIVATE_KEY",
+		EnvVars:  []string{"ECDSA_PRIVATE_KEY"},
 	}
 	/* Optional Flags */
 )
