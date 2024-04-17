@@ -18,6 +18,7 @@ import (
 	"github.com/cockroachdb/pebble"
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
+	cli "github.com/urfave/cli/v2"
 )
 
 // //go:embed assets/*
@@ -26,9 +27,8 @@ var logger zerolog.Logger
 var cfg *Cfg
 
 func init() {
-	// Define the headless flag
 	cfg = parseFlags()
-	cfg.appname = "My dApp"
+	// cfg.appname = "My dApp"
 
 	logger = zerolog.New(os.Stderr).With().Timestamp().Logger().Level(zerolog.DebugLevel)
 	if !cfg.headless {
@@ -37,13 +37,51 @@ func init() {
 }
 
 func main() {
+	app := &cli.App{
+		Name:  "Blockless AVS",
+		Usage: "TODO",
+		Before: func(c *cli.Context) error {
+			logger = zerolog.New(os.Stderr).With().Timestamp().Logger().Level(zerolog.DebugLevel)
+			// TODO: initialize config
+			// 	return initializeConfig(c)
+			return nil
+		},
+		Commands: []*cli.Command{
+			{
+				Name:   "serve",
+				Usage:  "Starts the server",
+				Action: runServer,
+				// Flags:  serverFlags(),
+			},
+			// {
+			// 	Name:    "register-operator-with-eigenlayer",
+			// 	Usage:   "registers operator with eigenlayer (this should be called via eigenlayer cli, not plugin, but keeping here for convenience for now)",
+			// 	Action:  actions.RegisterOperatorWithEigenlayer,
+			// 	Aliases: []string{"rel"},
+			// },
+		},
+		Flags: []cli.Flag{
+			&cli.StringFlag{
+				Name:  "config",
+				Value: "$HOME/.appName.yaml",
+				Usage: "config file to use",
+			},
+		},
+	}
+
+	if err := app.Run(os.Args); err != nil {
+		log.Fatal().Err(err).Msg("Failed to run app")
+	}
+}
+
+func runServer(c *cli.Context) error {
 	// Signal catching for clean shutdown.
 	sig := make(chan os.Signal, 1)
 	signal.Notify(sig, os.Interrupt)
 	done := make(chan struct{})
 	failed := make(chan struct{})
 
-	logger.Info().Bool("headless mode", !cfg.headless).Msg("the server is starting")
+	// logger.Info().Bool("headless mode", !cfg.headless).Msg("the server is starting")
 
 	// assets, err := fs.Sub(embeddedFiles, "assets")
 	// if err != nil {
@@ -129,6 +167,8 @@ func main() {
 		logger.Warn().Msg("forcing exit")
 		os.Exit(1)
 	}()
+
+	return nil
 }
 
 func waitForServer(url string) {
@@ -165,5 +205,4 @@ func openbrowser(url string) {
 	if err != nil {
 		logger.Fatal().Err(err)
 	}
-
 }

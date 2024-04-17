@@ -21,13 +21,12 @@ const (
 type Cfg struct {
 	config.Config
 
-	appname  string
-	devmode  bool
+	appName  string
+	devMode  bool
 	headless bool
 }
 
 func parseFlags() *Cfg {
-
 	var cfg Cfg
 
 	pflag.StringVarP(&cfg.Log.Level, "log-level", "l", "info", "log level to use")
@@ -65,7 +64,7 @@ func parseFlags() *Cfg {
 
 	// AVS/dApp flags
 	pflag.BoolVar(&cfg.headless, "headless", true, "Run in headless mode without opening the browser")
-	pflag.BoolVar(&cfg.devmode, "devmode", false, "Run in headless mode without opening the browser")
+	pflag.BoolVar(&cfg.devMode, "devmode", false, "Run in headless mode without opening the browser")
 
 	pflag.CommandLine.SortFlags = false
 

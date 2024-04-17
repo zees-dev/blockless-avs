@@ -4,7 +4,7 @@
 // 	protoc        v4.25.3
 // source: proto/types.proto
 
-package go_vite_app
+package proto
 
 import (
 	protoreflect "google.golang.org/protobuf/reflect/protoreflect"

@@ -4,11 +4,11 @@ import (
 	"encoding/json"
 	"net/http"
 
-	go_vite_app "github.com/dmikey/go-vite-app-p2p/server/proto"
+	avs "github.com/zees-dev/blockless-avs/proto"
 )
 
-var myAPI = &go_vite_app.API{
-	EndPoints: &go_vite_app.API_End_Points{
+var myAPI = &avs.API{
+	EndPoints: &avs.API_End_Points{
 		GetMetaData: "/api/getMeta",
 	},
 }
@@ -18,8 +18,8 @@ func RegisterAPIRoutes(cfg Cfg) {
 	// Example handler that marshals a protobuf message to JSON and writes it to the response
 	getAppMeta := func(w http.ResponseWriter, r *http.Request) {
 		// Create an instance of the protobuf message
-		appMeta := &go_vite_app.AppMeta{
-			Name: cfg.appname,
+		appMeta := &avs.AppMeta{
+			Name: cfg.appName,
 		}
 
 		// Convert protobuf message to JSON
