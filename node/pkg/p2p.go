@@ -1,4 +1,4 @@
-package main
+package pkg
 
 import (
 	"context"
@@ -24,18 +24,19 @@ const (
 	failure = 1
 )
 
-type pebbleNoopLogger struct{}
-func (p *pebbleNoopLogger) Infof(_ string, _ ...any) {}
-func (p *pebbleNoopLogger) Fatalf(_ string, _ ...any) {}
+type PebbleNoopLogger struct{}
+
+func (p *PebbleNoopLogger) Infof(_ string, _ ...any)  {}
+func (p *PebbleNoopLogger) Fatalf(_ string, _ ...any) {}
 
 // func main() {
 // 	os.Exit(run())
 // }
 
-func runP2P(ctx context.Context, log zerolog.Logger, cfg Cfg, done chan struct{}, failed chan struct{}, pdb *pebble.DB, fdb *pebble.DB) int {
+func RunP2P(ctx context.Context, log zerolog.Logger, cfg Cfg, done chan struct{}, failed chan struct{}, pdb *pebble.DB, fdb *pebble.DB) int {
 
-	cfg.PeerDatabasePath="/tmp/myapp-peers"
-	cfg.FunctionDatabasePath="/tmp/myapp-functions"
+	cfg.PeerDatabasePath = "/tmp/myapp-peers"
+	cfg.FunctionDatabasePath = "/tmp/myapp-functions"
 	cfg.Role = blockless.HeadNodeLabel
 
 	// Determine node role.
@@ -48,7 +49,6 @@ func runP2P(ctx context.Context, log zerolog.Logger, cfg Cfg, done chan struct{}
 		return failure
 	}
 	cfg.Workspace = workspace
-
 
 	// Create a new store.
 	pstore := store.New(pdb)
@@ -99,8 +99,6 @@ func runP2P(ctx context.Context, log zerolog.Logger, cfg Cfg, done chan struct{}
 		node.WithConcurrency(cfg.Concurrency),
 		node.WithAttributeLoading(cfg.LoadAttributes),
 	}
-
-
 
 	functionStore := store.New(fdb)
 
@@ -154,4 +152,3 @@ func getBootNodeAddresses(addrs []string) ([]multiaddr.Multiaddr, error) {
 
 	return out, nil
 }
-

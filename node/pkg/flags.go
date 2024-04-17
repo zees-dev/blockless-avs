@@ -1,4 +1,4 @@
-package main
+package pkg
 
 import (
 	"github.com/spf13/pflag"
@@ -23,10 +23,10 @@ type Cfg struct {
 
 	appName  string
 	devMode  bool
-	headless bool
+	Headless bool
 }
 
-func parseFlags() *Cfg {
+func ParseFlags() *Cfg {
 	var cfg Cfg
 
 	pflag.StringVarP(&cfg.Log.Level, "log-level", "l", "info", "log level to use")
@@ -63,7 +63,7 @@ func parseFlags() *Cfg {
 	pflag.Int64Var(&cfg.MemoryMaxKB, "memory-limit", 0, "memory limit (kB) for Blockless Functions")
 
 	// AVS/dApp flags
-	pflag.BoolVar(&cfg.headless, "headless", true, "Run in headless mode without opening the browser")
+	pflag.BoolVar(&cfg.Headless, "headless", true, "Run in headless mode without opening the browser")
 	pflag.BoolVar(&cfg.devMode, "devmode", false, "Run in headless mode without opening the browser")
 
 	pflag.CommandLine.SortFlags = false

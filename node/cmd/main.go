@@ -19,19 +19,20 @@ import (
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
 	cli "github.com/urfave/cli/v2"
+	avs "github.com/zees-dev/blockless-avs/pkg"
 )
 
 // //go:embed assets/*
 // var embeddedFiles embed.FS
 var logger zerolog.Logger
-var cfg *Cfg
+var cfg *avs.Cfg
 
 func init() {
-	cfg = parseFlags()
+	cfg = avs.ParseFlags()
 	// cfg.appname = "My dApp"
 
 	logger = zerolog.New(os.Stderr).With().Timestamp().Logger().Level(zerolog.DebugLevel)
-	if !cfg.headless {
+	if !cfg.Headless {
 		logger = logger.Output(zerolog.ConsoleWriter{Out: os.Stderr})
 	}
 }
@@ -92,7 +93,7 @@ func runServer(c *cli.Context) error {
 	// Get the port the server is listening on.
 	// Listen on a random port.
 	listenHost := "localhost"
-	if cfg.headless {
+	if cfg.Headless {
 		listenHost = "0.0.0.0"
 	}
 
@@ -111,30 +112,30 @@ func runServer(c *cli.Context) error {
 	// http.Handle("/", http.FileServer(http.FS(assets)))
 
 	// Register API routes.
-	RegisterAPIRoutes(*cfg)
+	avs.RegisterAPIRoutes(*cfg)
 
 	// Create the main context for p2p
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
 	// Open the pebble peer database.
-	pdb, err := pebble.Open(cfg.PeerDatabasePath, &pebble.Options{Logger: &pebbleNoopLogger{}})
+	pdb, err := pebble.Open(cfg.PeerDatabasePath, &pebble.Options{Logger: &avs.PebbleNoopLogger{}})
 	if err != nil {
 		log.Error().Err(err).Str("db", cfg.PeerDatabasePath).Msg("could not open pebble peer database")
 	}
 	defer pdb.Close()
 
 	// Open the pebble function database.
-	fdb, err := pebble.Open(cfg.FunctionDatabasePath, &pebble.Options{Logger: &pebbleNoopLogger{}})
+	fdb, err := pebble.Open(cfg.FunctionDatabasePath, &pebble.Options{Logger: &avs.PebbleNoopLogger{}})
 	if err != nil {
 		log.Error().Err(err).Str("db", cfg.FunctionDatabasePath).Msg("could not open pebble function database")
 	}
 	defer fdb.Close()
 
 	// Boot P2P Network
-	runP2P(ctx, logger, *cfg, done, failed, pdb, fdb)
+	avs.RunP2P(ctx, logger, *cfg, done, failed, pdb, fdb)
 
-	if !cfg.headless {
+	if !cfg.Headless {
 		logger.Info().Msg("Opening browser")
 		go func() {
 			waitForServer(serverURL)
