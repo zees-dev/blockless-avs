@@ -4,22 +4,22 @@ import (
 	"encoding/json"
 	"net/http"
 
-	proto "github.com/zees-dev/blockless-avs/proto"
+	"github.com/zees-dev/blockless-avs/core"
+	proto "github.com/zees-dev/blockless-avs/node/proto"
 )
 
-var myAPI = &proto.API{
-	EndPoints: &proto.API_End_Points{
-		GetMetaData: "/api/getMeta",
-	},
-}
-
 // RegisterAPIRoutes sets up the API routes.
-func RegisterAPIRoutes(cfg Cfg) {
+func RegisterAPIRoutes(cfg *core.AppConfig) {
+	http.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte("OK"))
+	})
+
 	// Example handler that marshals a protobuf message to JSON and writes it to the response
-	getAppMeta := func(w http.ResponseWriter, r *http.Request) {
+	http.HandleFunc("/api", func(w http.ResponseWriter, r *http.Request) {
 		// Create an instance of the protobuf message
 		appMeta := &proto.AppMeta{
-			Name: cfg.appName,
+			Name: cfg.AppName,
 		}
 
 		// Convert protobuf message to JSON
@@ -36,12 +36,17 @@ func RegisterAPIRoutes(cfg Cfg) {
 
 		// Write the JSON data to the response
 		w.Write(jsonData)
-	}
+	})
 
-	getAPIMeta := func(w http.ResponseWriter, r *http.Request) {
+	// Register the handler function for the route
+	http.HandleFunc("/api/meta", func(w http.ResponseWriter, r *http.Request) {
 
 		// Note: Consider error handling for production code
-		jsonData, err := json.Marshal(myAPI)
+		jsonData, err := json.Marshal(proto.API{
+			EndPoints: &proto.API_End_Points{
+				GetMetaData: "/api/getMeta",
+			},
+		})
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
@@ -53,10 +58,5 @@ func RegisterAPIRoutes(cfg Cfg) {
 
 		// Write the JSON data to the response
 		w.Write(jsonData)
-	}
-
-	http.HandleFunc("/api", getAPIMeta)
-
-	// Register the handler function for the route
-	http.HandleFunc(myAPI.EndPoints.GetMetaData, getAppMeta)
+	})
 }

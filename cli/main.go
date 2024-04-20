@@ -7,19 +7,22 @@ import (
 	"github.com/rs/zerolog/log"
 	"github.com/urfave/cli/v2"
 	"github.com/zees-dev/blockless-avs/cli/actions"
+	"github.com/zees-dev/blockless-avs/core"
 	"github.com/zees-dev/blockless-avs/core/config"
 )
+
+const AppName = "Blockless AVS"
 
 func main() {
 	app := cli.NewApp()
 
-	app.Name = "Blockless AVS"
+	app.Name = AppName
 	app.Usage = "TODO"
 
 	// init app state, store in context
 	app.Before = func(c *cli.Context) error {
 		logger := zerolog.New(os.Stderr).With().Timestamp().Logger().Level(zerolog.DebugLevel)
-		c.App.Metadata[actions.AppStateKey] = &actions.AppState{
+		c.App.Metadata[core.AppConfigKey] = &core.AppConfig{
 			Logger: logger,
 		}
 		return nil
