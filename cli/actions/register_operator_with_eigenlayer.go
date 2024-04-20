@@ -13,7 +13,6 @@ import (
 )
 
 func RegisterOperatorWithEigenlayer(ctx *cli.Context) error {
-
 	configPath := ctx.String(config.ConfigFileFlag.Name)
 	nodeConfig := types.NodeConfig{}
 	err := sdkutils.ReadYamlConfig(configPath, &nodeConfig)

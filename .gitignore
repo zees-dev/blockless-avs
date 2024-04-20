@@ -29,3 +29,7 @@ logs.txt
 
 # Anvil snapshots
 anvil/snapshots/
+
+# node data
+function-db/
+peer-db/

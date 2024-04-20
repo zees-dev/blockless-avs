@@ -36,7 +36,7 @@ func DepositIntoStrategy(ctx *cli.Context) error {
 		return err
 	}
 
-	strategyAddrStr := ctx.String("strategy-addr")
+	strategyAddrStr := nodeConfig.TokenStrategyAddr
 	strategyAddr := common.HexToAddress(strategyAddrStr)
 	amountStr := ctx.String("amount")
 	amount, ok := new(big.Int).SetString(amountStr, 10)
