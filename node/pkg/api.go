@@ -9,14 +9,14 @@ import (
 )
 
 // RegisterAPIRoutes sets up the API routes.
-func RegisterAPIRoutes(cfg *core.AppConfig) {
-	http.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
+func RegisterAPIRoutes(cfg *core.AppConfig, mux *http.ServeMux) {
+	mux.HandleFunc("GET /health", func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
 		w.Write([]byte("OK"))
 	})
 
 	// Example handler that marshals a protobuf message to JSON and writes it to the response
-	http.HandleFunc("/api", func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("GET /api", func(w http.ResponseWriter, r *http.Request) {
 		// Create an instance of the protobuf message
 		appMeta := &proto.AppMeta{
 			Name: cfg.AppName,
@@ -39,7 +39,7 @@ func RegisterAPIRoutes(cfg *core.AppConfig) {
 	})
 
 	// Register the handler function for the route
-	http.HandleFunc("/api/meta", func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("GET /api/meta", func(w http.ResponseWriter, r *http.Request) {
 
 		// Note: Consider error handling for production code
 		jsonData, err := json.Marshal(proto.API{

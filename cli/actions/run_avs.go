@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"net"
 	"net/http"
 	"os"
 	"os/exec"
@@ -33,35 +32,19 @@ func RunAVS(c *cli.Context) error {
 
 	logger.Info().Bool("headless mode", !app.Headless).Msg("the server is starting")
 
+	router := http.NewServeMux()
+
 	// assets, err := fs.Sub(embeddedFiles, "assets")
 	// if err != nil {
 	// 	logger.Info().Err(err).Msg("Failed to locate embedded assets")
 	// 	return
 	// }
 
-	// Get the port the server is listening on.
-	// Listen on a random port.
-	listenHost := "127.0.0.1"
-	if app.Headless {
-		listenHost = "0.0.0.0"
-	}
-
-	// listenAddr := fmt.Sprintf("%s:%s", listenHost, cfg.API)
-	listenAddr := fmt.Sprintf("%s:%s", listenHost, "8080")
-	listener, err := net.Listen("tcp", listenAddr)
-	if err != nil {
-		logger.Fatal().Err(err).Msg("Failed to listen on a port: %v")
-	}
-	defer listener.Close()
-
-	port := listener.Addr().(*net.TCPAddr).Port
-	serverURL := fmt.Sprintf("http://127.0.0.1:%s", fmt.Sprint(port))
-
 	// // Use the http.FileServer to serve the embedded assets.
-	// http.Handle("/", http.FileServer(http.FS(assets)))
+	// mux.Handle("/", http.FileServer(http.FS(assets)))
 
 	// Register API routes.
-	avs.RegisterAPIRoutes(app)
+	avs.RegisterAPIRoutes(app, router)
 
 	// Create the main context for p2p
 	_, cancel := context.WithCancel(context.Background())
@@ -94,10 +77,16 @@ func RunAVS(c *cli.Context) error {
 	// }
 
 	// Start API in a separate goroutine.
+	v1 := http.NewServeMux()
+	v1.Handle("/v1/", http.StripPrefix("/v1", router))
+	middlewares := Middlewares(app)
+	server := &http.Server{
+		Addr:    ":8080",
+		Handler: middlewares(v1),
+	}
 	go func() {
-		logger.Info().Str("serverUrl", serverURL).Str("port", "8080").Msgf("Server listening on %s", serverURL)
-		err := http.Serve(listener, nil)
-		if err != nil && !errors.Is(err, http.ErrServerClosed) {
+		logger.Info().Msgf("Server listening on %s", server.Addr)
+		if err := server.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
 			logger.Warn().Err(err).Msg("Closed Server")
 			close(failed)
 		}
@@ -107,9 +96,9 @@ func RunAVS(c *cli.Context) error {
 	case <-sig:
 		logger.Info().Msg("Blockless AVS stopping")
 	case <-done:
-		logger.Info().Msg("Blockless AVS done")
+		logger.Info().Msg("Blockless AVS P2P done")
 	case <-failed:
-		logger.Info().Msg("Blockless AVS aborted")
+		logger.Info().Msg("Blockless AVS P2P aborted")
 	}
 
 	// If we receive a second interrupt signal, exit immediately.
@@ -120,6 +109,31 @@ func RunAVS(c *cli.Context) error {
 	}()
 
 	return nil
+}
+
+type wrappedWriter struct {
+	http.ResponseWriter
+	status int
+}
+
+func (w *wrappedWriter) WriteHeader(status int) {
+	w.status = status
+	w.ResponseWriter.WriteHeader(status)
+}
+
+func Middlewares(app *core.AppConfig) func(next http.Handler) http.Handler {
+	logging := func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			start := time.Now()
+			wrapped := &wrappedWriter{ResponseWriter: w, status: http.StatusOK}
+			next.ServeHTTP(wrapped, r)
+			app.Logger.Info().Int("status", wrapped.status).Str("method", r.Method).Str("path", r.URL.Path).Dur("duration", time.Since(start)).Msg("http request")
+		})
+	}
+
+	// TODO: Add more middlewares here.
+
+	return logging
 }
 
 func waitForServer(app *core.AppConfig, url string) {
