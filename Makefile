@@ -20,6 +20,14 @@ clean:
 	cd contracts && forge clean && rm -rf cache && rm -rf script/output
 
 ___CONTRACTS___: ## 
+## Deploy all contracts, start anvil with deployed contracts
+start-anvil-all-deployed:
+	echo "Deploying eigenlayer contracts..."
+	make deploy-eigenlayer-contracts-to-anvil-and-save-state
+	echo "Deploying AVS contracts..."
+	make deploy-avs-contracts-to-anvil-and-save-state
+	echo "Starting anvil with EL and AVS contracts deployed..."
+	make start-anvil-chain-with-el-and-avs-deployed
 
 build-contracts: ## builds all contracts
 	cd contracts && forge build
@@ -31,7 +39,7 @@ deploy-eigenlayer-contracts-to-anvil-and-save-state:
 
 ## Deploy AVS contracts
 ## Save snapshot of anvil state and outputs contract addresses to json file
-deploy-incredible-squaring-contracts-to-anvil-and-save-state:
+deploy-avs-contracts-to-anvil-and-save-state:
 	./anvil/deploy-avs-save-anvil-state.sh
 
 ## starts anvil from a saved state file (with el and avs contracts deployed)
@@ -39,9 +47,8 @@ deploy-incredible-squaring-contracts-to-anvil-and-save-state:
 start-anvil-chain-with-el-and-avs-deployed:
 	./anvil/start-anvil-chain-with-el-and-avs-deployed.sh
 
-start-anvil-all-deployed: deploy-eigenlayer-contracts-to-anvil-and-save-state deploy-incredible-squaring-contracts-to-anvil-and-save-state start-anvil-chain-with-el-and-avs-deployed
-
-bindings: ## generates contract bindings
+## Generate contract go bindings
+bindings:
 	cd contracts && ./generate-go-bindings.sh
 
 ___DOCKER___: ## 
@@ -51,26 +58,39 @@ docker-build-and-publish-images: ## builds and publishes operator and aggregator
 docker-start-everything: docker-build-and-publish-images ## starts aggregator and operator docker containers
 	docker compose pull && docker compose up
 
-__CLI__: ## 
+__OPERATOR__: ## 
+cli-setup-operator: ## registers operator with eigenlayer and avs
+	echo "Updating operator.anvil.yaml config..."
+	make cli-update-operator-config
+	# echo "Sending funds to operator (pay tx fees)"
+	# make send-fund
+	echo "Registering operator with eigenlayer"
+	make cli-register-operator-with-eigenlayer
+	echo "Depositing into mocktoken strategy"
+	make cli-deposit-into-mocktoken-strategy
+	echo "Registering operator with avs"
+	make cli-register-operator-with-avs
+	make cli-print-operator-status
 
-cli-setup-operator: send-fund cli-register-operator-with-eigenlayer cli-deposit-into-mocktoken-strategy cli-register-operator-with-avs ## registers operator with eigenlayer and avs
+cli-update-operator-config: ## updates operator.anvil.yaml config from generated/deployed contract addresses
+	./config-files/update-operator-config.sh
 
-cli-register-operator-with-eigenlayer: ## registers operator with delegationManager
-	go run cli/main.go --config config-files/operator.anvil.yaml register-operator-with-eigenlayer
+cli-register-operator-with-eigenlayer:
+	go run cli/*.go register-operator-with-eigenlayer --config config-files/operator.anvil.yaml
 
-cli-deposit-into-mocktoken-strategy: ## 
-	./scripts/deposit-into-mocktoken-strategy.sh
+cli-deposit-into-mocktoken-strategy:
+	go run cli/*.go deposit-into-strategy --config config-files/operator.anvil.yaml --amount 100
 
-cli-register-operator-with-avs: ## 
-	go run cli/main.go --config config-files/operator.anvil.yaml register-operator-with-avs
+cli-register-operator-with-avs:
+	go run cli/*.go register-operator-with-avs --config config-files/operator.anvil.yaml
 
-cli-deregister-operator-with-avs: ## 
-	go run cli/main.go --config config-files/operator.anvil.yaml deregister-operator-with-avs
+cli-deregister-operator-with-avs:
+	go run cli/*.go deregister-operator-with-avs --config config-files/operator.anvil.yaml
 
-cli-print-operator-status: ## 
-	go run cli/main.go --config config-files/operator.anvil.yaml print-operator-status
+cli-print-operator-status:
+	go run cli/*.go print-operator-status --config config-files/operator.anvil.yaml
 
-send-fund: ## sends fund to the operator saved in tests/keys/test.ecdsa.key.json
+send-fund: ## sends fund to the operator saved in config-files/keys/test.ecdsa.key.json
 	cast send 0x860B6912C2d0337ef05bbC89b0C2CB6CbAEAB4A5 --value 10ether --private-key 0x2a871d0798f97d79848a013d4936a73bf4cc922c825d33c1cf7073dff6d409c6
 
 -----------------------------: ## 
