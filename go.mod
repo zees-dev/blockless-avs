@@ -8,7 +8,6 @@ require (
 	github.com/cockroachdb/pebble v1.1.0
 	github.com/ethereum/go-ethereum v1.13.15
 	github.com/labstack/echo/v4 v4.11.4
-	github.com/multiformats/go-multiaddr v0.12.2
 	github.com/prometheus/client_golang v1.19.0
 	github.com/rs/zerolog v1.32.0
 	github.com/spf13/pflag v1.0.5
@@ -32,7 +31,6 @@ require (
 	github.com/blocklessnetwork/b7s-attributes v0.0.0 // indirect
 	github.com/boltdb/bolt v1.3.1 // indirect
 	github.com/btcsuite/btcd/btcec/v2 v2.2.0 // indirect
-	github.com/cavaliergopher/grab/v3 v3.0.1 // indirect
 	github.com/cespare/xxhash/v2 v2.2.0 // indirect
 	github.com/cockroachdb/errors v1.11.1 // indirect
 	github.com/cockroachdb/logtags v0.0.0-20230118201751-21c54148d20b // indirect
@@ -134,6 +132,7 @@ require (
 	github.com/mr-tron/base58 v1.2.0 // indirect
 	github.com/multiformats/go-base32 v0.1.0 // indirect
 	github.com/multiformats/go-base36 v0.2.0 // indirect
+	github.com/multiformats/go-multiaddr v0.12.2 // indirect
 	github.com/multiformats/go-multiaddr-dns v0.3.1 // indirect
 	github.com/multiformats/go-multiaddr-fmt v0.1.0 // indirect
 	github.com/multiformats/go-multibase v0.2.0 // indirect
