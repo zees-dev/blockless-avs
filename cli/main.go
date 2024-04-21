@@ -50,7 +50,6 @@ func main() {
 		if err := sdkutils.ReadYamlConfig(configPath, &nodeConfig); err != nil {
 			return err
 		}
-		nodeConfig.RegisterOperatorOnStartup = false // auto-registers operator on startup
 		operator, err := operator.NewOperatorFromConfig(nodeConfig)
 		if err != nil {
 			return err

@@ -11,6 +11,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 
 	"github.com/zees-dev/blockless-avs/aggregator"
+
 	cstaskmanager "github.com/zees-dev/blockless-avs/contracts/bindings/IncredibleSquaringTaskManager"
 	"github.com/zees-dev/blockless-avs/core"
 	"github.com/zees-dev/blockless-avs/core/chainio"
@@ -261,8 +262,6 @@ func (o *Operator) Start(ctx context.Context) error {
 		return fmt.Errorf("operator is not registered. Registering operator using the operator-cli before starting operator")
 	}
 
-	o.logger.Infof("Starting operator.")
-
 	if o.config.EnableNodeApi {
 		o.nodeApi.Start()
 	}
@@ -304,7 +303,6 @@ func (o *Operator) Start(ctx context.Context) error {
 // Takes a NewTaskCreatedLog struct as input and returns a TaskResponseHeader struct.
 // The TaskResponseHeader struct is the struct that is signed and sent to the contract as a task response.
 func (o *Operator) ProcessNewTaskCreatedLog(newTaskCreatedLog *cstaskmanager.ContractIncredibleSquaringTaskManagerNewTaskCreated) *cstaskmanager.IIncredibleSquaringTaskManagerTaskResponse {
-	o.logger.Debug("Received new task", "task", newTaskCreatedLog)
 	o.logger.Info("Received new task",
 		"numberToBeSquared", newTaskCreatedLog.Task.NumberToBeSquared,
 		"taskIndex", newTaskCreatedLog.TaskIndex,
@@ -320,6 +318,34 @@ func (o *Operator) ProcessNewTaskCreatedLog(newTaskCreatedLog *cstaskmanager.Con
 	return taskResponse
 }
 
+// SubmitNewTask sends a new task to the task manager contract, and updates the Task dict struct
+// with the information of operators opted into quorum 0 at the block of task creation.
+func (o *Operator) SubmitNewTask(numToSquare *big.Int) (*cstaskmanager.IIncredibleSquaringTaskManagerTask, uint32, error) {
+	o.logger.Info("Operator sending new task", "numberToSquare", numToSquare)
+	// Send number to square to the task manager contract
+	newTask, taskIndex, err := o.avsWriter.SendNewTaskNumberToSquare(context.Background(), numToSquare, uint32(100), []byte{0})
+	if err != nil {
+		o.logger.Error("Operator failed to send number to square", "err", err)
+		return nil, 0, err
+	}
+
+	// agg.tasksMu.Lock()
+	// agg.tasks[taskIndex] = newTask
+	// agg.tasksMu.Unlock()
+
+	// quorumThresholdPercentages := make([]uint32, len(newTask.QuorumNumbers))
+	// for i, _ := range newTask.QuorumNumbers {
+	// 	quorumThresholdPercentages[i] = newTask.QuorumThresholdPercentage
+	// }
+	// // TODO(samlaf): we use seconds for now, but we should ideally pass a blocknumber to the blsAggregationService
+	// // and it should monitor the chain and only expire the task aggregation once the chain has reached that block number.
+	// taskTimeToExpiry := taskChallengeWindowBlock * blockTimeSeconds
+	// agg.blsAggregationService.InitializeNewTask(taskIndex, newTask.TaskCreatedBlock, newTask.QuorumNumbers, quorumThresholdPercentages, taskTimeToExpiry)
+
+	return &newTask, taskIndex, nil
+}
+
+// TODO: remove dependency on aggregator
 func (o *Operator) SignTaskResponse(taskResponse *cstaskmanager.IIncredibleSquaringTaskManagerTaskResponse) (*aggregator.SignedTaskResponse, error) {
 	taskResponseHash, err := core.GetTaskResponseDigest(taskResponse)
 	if err != nil {

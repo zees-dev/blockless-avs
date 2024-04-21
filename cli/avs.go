@@ -32,6 +32,20 @@ func RunAVS(c *cli.Context) error {
 
 	logger.Info().Str("app_name", app.AppName).Bool("headless_mode", app.Headless).Bool("dev_mode", app.DevMode).Msg("server is starting..")
 
+	// Create the main context for p2p
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	// Start the operator.
+	go func() {
+		logger.Info().Msg("starting operator...")
+		if err := app.Operator.Start(ctx); err != nil {
+			logger.Error().Msg("failed to start operator")
+		} else {
+			logger.Info().Msg("started operator")
+		}
+	}()
+
 	router := http.NewServeMux()
 
 	// assets, err := fs.Sub(embeddedFiles, "assets")
@@ -45,10 +59,6 @@ func RunAVS(c *cli.Context) error {
 
 	// Register API routes.
 	node.RegisterAPIRoutes(app, router)
-
-	// Create the main context for p2p
-	_, cancel := context.WithCancel(context.Background())
-	defer cancel()
 
 	// // TODO: B7s setup below
 	// // Open the pebble peer database.

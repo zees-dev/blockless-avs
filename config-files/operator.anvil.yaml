@@ -37,9 +37,9 @@ aggregator_server_ip_port_address: localhost:8090
 eigen_metrics_ip_port_address: localhost:9090
 enable_metrics: true
 node_api_ip_port_address: localhost:9010
-enable_node_api: true
+enable_node_api: false
 
-register_operator_on_startup: true
+register_operator_on_startup: false
 # address of token to deposit tokens into when registering on startup
 # addresses.erc20MockStrategy in anvil/credible_squaring_avs_deployment_output.json
 token_strategy_addr: 0x4A679253410272dd5232B3Ff7cF5dbB88f295319 # erc20MockStrategy
