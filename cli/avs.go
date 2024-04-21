@@ -30,7 +30,7 @@ func RunAVS(c *cli.Context) error {
 	done := make(chan struct{})
 	failed := make(chan struct{})
 
-	logger.Info().Bool("headless mode", !app.Headless).Msg("the server is starting")
+	logger.Info().Str("app_name", app.AppName).Bool("headless_mode", app.Headless).Bool("dev_mode", app.DevMode).Msg("server is starting..")
 
 	router := http.NewServeMux()
 

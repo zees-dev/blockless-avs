@@ -1,5 +1,5 @@
 # this sets the logger level (true = info, false = debug)
-production: true
+production: false
 
 # retrieved from config-files/keys/test.ecdsa.key.json
 operator_address: 0x860B6912C2d0337ef05bbC89b0C2CB6CbAEAB4A5

@@ -4,6 +4,7 @@ import (
 	"errors"
 	"math/big"
 	"os"
+	"time"
 
 	sdkecdsa "github.com/Layr-Labs/eigensdk-go/crypto/ecdsa"
 	sdkutils "github.com/Layr-Labs/eigensdk-go/utils"
@@ -37,7 +38,11 @@ func main() {
 
 	// init app state, store in context
 	app.Before = func(c *cli.Context) error {
-		logger := zerolog.New(os.Stderr).With().Timestamp().Logger().Level(zerolog.DebugLevel)
+		// Use ConsoleWriter to format logs for human readability - dev mode only
+		output := zerolog.ConsoleWriter{Out: os.Stderr, TimeFormat: time.RFC3339}
+		logger := zerolog.New(output).With().Timestamp().Logger().Level(zerolog.DebugLevel)
+
+		// logger := zerolog.New(os.Stderr).With().Timestamp().Logger().Level(zerolog.DebugLevel)
 
 		// setup operator from config file - provided as flag
 		configPath := c.String(config.ConfigFileFlag.Name)
@@ -52,6 +57,7 @@ func main() {
 		}
 
 		c.App.Metadata[avs.AppConfigKey] = &avs.AppConfig{
+			AppName:    AppName,
 			Logger:     &logger,
 			NodeConfig: &nodeConfig,
 			Operator:   operator,

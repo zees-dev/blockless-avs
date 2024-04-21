@@ -53,7 +53,7 @@ func ParseFlags(cfg *avs.AppConfig) {
 
 	// AVS/dApp flags
 	pflag.BoolVar(&cfg.Headless, "headless", true, "Run in headless mode without opening the browser")
-	pflag.BoolVar(&cfg.DevMode, "devmode", false, "Run in headless mode without opening the browser")
+	pflag.BoolVar(&cfg.DevMode, "devmode", true, "Run in headless mode without opening the browser")
 
 	pflag.CommandLine.SortFlags = false
 
