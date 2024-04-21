@@ -4,12 +4,12 @@ import (
 	"encoding/json"
 	"net/http"
 
-	"github.com/zees-dev/blockless-avs/core"
+	avs "github.com/zees-dev/blockless-avs"
 	proto "github.com/zees-dev/blockless-avs/node/proto"
 )
 
 // RegisterAPIRoutes sets up the API routes.
-func RegisterAPIRoutes(cfg *core.AppConfig, mux *http.ServeMux) {
+func RegisterAPIRoutes(cfg *avs.AppConfig, mux *http.ServeMux) {
 	mux.HandleFunc("GET /health", func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
 		w.Write([]byte("OK"))

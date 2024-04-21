@@ -1,14 +1,20 @@
 package main
 
 import (
+	"errors"
+	"math/big"
 	"os"
 
+	sdkecdsa "github.com/Layr-Labs/eigensdk-go/crypto/ecdsa"
+	sdkutils "github.com/Layr-Labs/eigensdk-go/utils"
+	"github.com/ethereum/go-ethereum/common"
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
 	"github.com/urfave/cli/v2"
-	"github.com/zees-dev/blockless-avs/cli/actions"
-	"github.com/zees-dev/blockless-avs/core"
+	avs "github.com/zees-dev/blockless-avs"
 	"github.com/zees-dev/blockless-avs/core/config"
+	"github.com/zees-dev/blockless-avs/operator"
+	"github.com/zees-dev/blockless-avs/types"
 )
 
 const AppName = "Blockless AVS"
@@ -19,11 +25,36 @@ func main() {
 	app.Name = AppName
 	app.Usage = "TODO"
 
+	// globally required flags
+	app.Flags = []cli.Flag{
+		&cli.StringFlag{
+			Name:  "config",
+			Usage: "Load configuration from `FILE`",
+			Value: "config-files/operator.anvil.yaml",
+			// Required: true,
+		},
+	}
+
 	// init app state, store in context
 	app.Before = func(c *cli.Context) error {
 		logger := zerolog.New(os.Stderr).With().Timestamp().Logger().Level(zerolog.DebugLevel)
-		c.App.Metadata[core.AppConfigKey] = &core.AppConfig{
-			Logger: logger,
+
+		// setup operator from config file - provided as flag
+		configPath := c.String(config.ConfigFileFlag.Name)
+		nodeConfig := types.NodeConfig{}
+		if err := sdkutils.ReadYamlConfig(configPath, &nodeConfig); err != nil {
+			return err
+		}
+		nodeConfig.RegisterOperatorOnStartup = false // auto-registers operator on startup
+		operator, err := operator.NewOperatorFromConfig(nodeConfig)
+		if err != nil {
+			return err
+		}
+
+		c.App.Metadata[avs.AppConfigKey] = &avs.AppConfig{
+			Logger:     &logger,
+			NodeConfig: &nodeConfig,
+			Operator:   operator,
 		}
 		return nil
 	}
@@ -32,21 +63,36 @@ func main() {
 		{
 			Name:   "run-avs",
 			Usage:  "Starts the server",
-			Action: actions.RunAVS,
+			Action: RunAVS,
 			// Flags: []cli.Flag{config.ConfigFileFlag},
 		},
 		{
 			Name:    "register-operator-with-eigenlayer",
 			Aliases: []string{"rel"},
 			Usage:   "registers operator with eigenlayer (this should be called via eigenlayer cli, not plugin, but keeping here for convenience for now)",
-			Action:  actions.RegisterOperatorWithEigenlayer,
-			Flags:   []cli.Flag{config.ConfigFileFlag},
+			Action: func(ctx *cli.Context) error {
+				operator := ctx.App.Metadata[avs.AppConfigKey].(*avs.AppConfig).Operator
+				return operator.RegisterOperatorWithEigenlayer()
+			},
+			Flags: []cli.Flag{config.ConfigFileFlag},
 		},
 		{
 			Name:    "deposit-into-strategy",
 			Aliases: []string{"dis"},
 			Usage:   "deposit tokens into a strategy",
-			Action:  actions.DepositIntoStrategy,
+			Action: func(ctx *cli.Context) error {
+				app := ctx.App.Metadata[avs.AppConfigKey].(*avs.AppConfig)
+
+				strategyAddrStr := app.NodeConfig.TokenStrategyAddr
+				strategyAddr := common.HexToAddress(strategyAddrStr)
+				amountStr := ctx.String("amount")
+				amount, ok := new(big.Int).SetString(amountStr, 10)
+				if !ok {
+					app.Logger.Error().Msg("Error converting amount to big.Int")
+					return errors.New("Error converting amount to big.Int")
+				}
+				return app.Operator.DepositIntoStrategy(strategyAddr, amount)
+			},
 			Flags: []cli.Flag{
 				config.ConfigFileFlag,
 				// &cli.StringFlag{
@@ -65,14 +111,30 @@ func main() {
 			Name:    "register-operator-with-avs",
 			Aliases: []string{"rowa"},
 			Usage:   "registers bls keys with pubkey-compendium, opts into slashing by avs service-manager, and registers operators with avs registry",
-			Action:  actions.RegisterOperatorWithAvs,
-			Flags:   []cli.Flag{config.ConfigFileFlag},
+			Action: func(ctx *cli.Context) error {
+				app := ctx.App.Metadata[avs.AppConfigKey].(*avs.AppConfig)
+				ecdsaKeyPassword, ok := os.LookupEnv("OPERATOR_ECDSA_KEY_PASSWORD")
+				if !ok {
+					app.Logger.Info().Msg("OPERATOR_ECDSA_KEY_PASSWORD env var not set. using empty string")
+				}
+				operatorEcdsaPrivKey, err := sdkecdsa.ReadKey(
+					app.NodeConfig.EcdsaPrivateKeyStorePath,
+					ecdsaKeyPassword,
+				)
+				if err != nil {
+					return err
+				}
+
+				return app.Operator.RegisterOperatorWithAvs(operatorEcdsaPrivKey)
+			},
+			Flags: []cli.Flag{config.ConfigFileFlag},
 		},
 		{
 			Name:    "deregister-operator-with-avs",
 			Aliases: []string{"dowa"},
 			Action: func(ctx *cli.Context) error {
-				log.Fatal().Msg("Command not implemented.")
+				app := ctx.App.Metadata[avs.AppConfigKey].(*avs.AppConfig)
+				app.Logger.Fatal().Msg("Command not implemented.")
 				return nil
 			},
 			Flags: []cli.Flag{config.ConfigFileFlag},
@@ -81,8 +143,11 @@ func main() {
 			Name:    "print-operator-status",
 			Aliases: []string{"pos"},
 			Usage:   "prints operator status as viewed from incredible squaring contracts",
-			Action:  actions.PrintOperatorStatus,
-			Flags:   []cli.Flag{config.ConfigFileFlag},
+			Action: func(ctx *cli.Context) error {
+				operator := ctx.App.Metadata[avs.AppConfigKey].(*avs.AppConfig).Operator
+				return operator.PrintOperatorStatus()
+			},
+			Flags: []cli.Flag{config.ConfigFileFlag},
 		},
 	}
 

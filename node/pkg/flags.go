@@ -3,7 +3,7 @@ package pkg
 import (
 	"github.com/blocklessnetwork/b7s/node"
 	"github.com/spf13/pflag"
-	"github.com/zees-dev/blockless-avs/core"
+	avs "github.com/zees-dev/blockless-avs"
 )
 
 // Default values.
@@ -17,7 +17,7 @@ const (
 	defaultRole         = "worker"
 )
 
-func ParseFlags(cfg *core.AppConfig) {
+func ParseFlags(cfg *avs.AppConfig) {
 	// pflag.StringVarP(&cfg.Log.Level, "log-level", "l", "info", "log level to use")
 
 	// // Node configuration.

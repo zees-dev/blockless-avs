@@ -1,4 +1,4 @@
-package actions
+package main
 
 import (
 	"context"
@@ -12,16 +12,16 @@ import (
 	"time"
 
 	"github.com/urfave/cli/v2"
-	"github.com/zees-dev/blockless-avs/core"
-	avs "github.com/zees-dev/blockless-avs/node/pkg"
+	avs "github.com/zees-dev/blockless-avs"
+	node "github.com/zees-dev/blockless-avs/node/pkg"
 )
 
 // //go:embed assets/*
 // var embeddedFiles embed.FS
 
 func RunAVS(c *cli.Context) error {
-	app := core.GetAppConfig(c)
-	avs.ParseFlags(app) // Parse flags (again) and set the AVS config in the app state.
+	app := avs.GetAppConfig(c)
+	node.ParseFlags(app) // Parse flags (again) and set the AVS config in the app state.
 	logger := app.Logger
 
 	// Signal catching for clean shutdown.
@@ -44,7 +44,7 @@ func RunAVS(c *cli.Context) error {
 	// mux.Handle("/", http.FileServer(http.FS(assets)))
 
 	// Register API routes.
-	avs.RegisterAPIRoutes(app, router)
+	node.RegisterAPIRoutes(app, router)
 
 	// Create the main context for p2p
 	_, cancel := context.WithCancel(context.Background())
@@ -121,7 +121,7 @@ func (w *wrappedWriter) WriteHeader(status int) {
 	w.ResponseWriter.WriteHeader(status)
 }
 
-func Middlewares(app *core.AppConfig) func(next http.Handler) http.Handler {
+func Middlewares(app *avs.AppConfig) func(next http.Handler) http.Handler {
 	logging := func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			start := time.Now()
@@ -136,7 +136,7 @@ func Middlewares(app *core.AppConfig) func(next http.Handler) http.Handler {
 	return logging
 }
 
-func waitForServer(app *core.AppConfig, url string) {
+func waitForServer(app *avs.AppConfig, url string) {
 	for {
 		// Attempt to connect to the server.
 		resp, err := http.Get(url)
@@ -154,7 +154,7 @@ func waitForServer(app *core.AppConfig, url string) {
 	}
 }
 
-func openbrowser(app *core.AppConfig, url string) {
+func openbrowser(app *avs.AppConfig, url string) {
 	var err error
 
 	switch runtime.GOOS {
