@@ -12,6 +12,7 @@ import (
 )
 
 type AggregatorRpcClienter interface {
+	// TODO: remove dependency on aggregator
 	SendSignedTaskResponseToAggregator(signedTaskResponse *aggregator.SignedTaskResponse)
 }
 type AggregatorRpcClient struct {
