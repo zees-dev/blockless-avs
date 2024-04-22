@@ -102,8 +102,8 @@ See the integration tests [README](tests/anvil/README.md) for more details.
 ```sh
 make clean
 make build-contracts
-make start-anvil-all-deployed
 make bindings
+make start-anvil-all-deployed
 make cli-setup-operator
 go run cli/*.go run-avs
 curl -X POST -d '{ "number": "2" }'  http://127.0.0.1:8080/v1/api/task
