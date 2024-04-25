@@ -2,14 +2,11 @@ package aggregator
 
 import (
 	"context"
-	"math/big"
 	"sync"
 	"time"
 
-	"github.com/Layr-Labs/eigensdk-go/logging"
-
-	"github.com/Layr-Labs/eigensdk-go/chainio/clients"
 	sdkclients "github.com/Layr-Labs/eigensdk-go/chainio/clients"
+	"github.com/Layr-Labs/eigensdk-go/logging"
 	"github.com/Layr-Labs/eigensdk-go/services/avsregistry"
 	blsagg "github.com/Layr-Labs/eigensdk-go/services/bls_aggregation"
 	oppubkeysserv "github.com/Layr-Labs/eigensdk-go/services/operatorpubkeys"
@@ -68,12 +65,16 @@ type Aggregator struct {
 	logger           logging.Logger
 	serverIpPortAddr string
 	avsWriter        chainio.AvsWriterer
+	avsSubscriber    chainio.AvsSubscriberer
 	// aggregation related fields
 	blsAggregationService blsagg.BlsAggregationService
-	tasks                 map[types.TaskIndex]cstaskmanager.IIncredibleSquaringTaskManagerTask
-	tasksMu               sync.RWMutex
-	taskResponses         map[types.TaskIndex]map[sdktypes.TaskResponseDigest]cstaskmanager.IIncredibleSquaringTaskManagerTaskResponse
-	taskResponsesMu       sync.RWMutex
+	// receive new tasks in this chan (typically from listening to onchain event)
+	newTaskCreatedChan   chan *cstaskmanager.ContractIncredibleSquaringTaskManagerNewTaskCreated
+	newTaskRespondedChan chan *cstaskmanager.ContractIncredibleSquaringTaskManagerTaskResponded
+	tasks                map[types.TaskIndex]cstaskmanager.IIncredibleSquaringTaskManagerTask
+	tasksMu              sync.RWMutex
+	taskResponses        map[types.TaskIndex]map[sdktypes.TaskResponseDigest]cstaskmanager.IIncredibleSquaringTaskManagerTaskResponse
+	taskResponsesMu      sync.RWMutex
 }
 
 // NewAggregator creates a new Aggregator with the provided config.
@@ -90,6 +91,11 @@ func NewAggregator(c *config.Config) (*Aggregator, error) {
 		c.Logger.Errorf("Cannot create avsWriter", "err", err)
 		return nil, err
 	}
+	avsSubscriber, err := chainio.BuildAvsSubscriberFromConfig(c)
+	if err != nil {
+		c.Logger.Errorf("Cannot create avsSubscriber", "err", err)
+		return nil, err
+	}
 
 	chainioConfig := sdkclients.BuildAllConfig{
 		EthHttpUrl:                 c.EthHttpRpcUrl,
@@ -99,7 +105,7 @@ func NewAggregator(c *config.Config) (*Aggregator, error) {
 		AvsName:                    avsName,
 		PromMetricsIpPortAddress:   ":9090",
 	}
-	clients, err := clients.BuildAll(chainioConfig, c.AggregatorAddress, c.SignerFn, c.Logger)
+	clients, err := sdkclients.BuildAll(chainioConfig, c.AggregatorAddress, c.SignerFn, c.Logger)
 	if err != nil {
 		c.Logger.Errorf("Cannot create sdk clients", "err", err)
 		return nil, err
@@ -113,41 +119,46 @@ func NewAggregator(c *config.Config) (*Aggregator, error) {
 		logger:                c.Logger,
 		serverIpPortAddr:      c.AggregatorServerIpPortAddr,
 		avsWriter:             avsWriter,
+		avsSubscriber:         avsSubscriber,
 		blsAggregationService: blsAggregationService,
+		newTaskCreatedChan:    make(chan *cstaskmanager.ContractIncredibleSquaringTaskManagerNewTaskCreated),
+		newTaskRespondedChan:  make(chan *cstaskmanager.ContractIncredibleSquaringTaskManagerTaskResponded),
 		tasks:                 make(map[types.TaskIndex]cstaskmanager.IIncredibleSquaringTaskManagerTask),
 		taskResponses:         make(map[types.TaskIndex]map[sdktypes.TaskResponseDigest]cstaskmanager.IIncredibleSquaringTaskManagerTaskResponse),
 	}, nil
 }
 
 func (agg *Aggregator) Start(ctx context.Context) error {
-	agg.logger.Infof("Starting aggregator.")
+	agg.logger.Infof("Starting aggregator")
 	agg.logger.Infof("Starting aggregator rpc server.")
 	go agg.startServer(ctx)
 
-	// TODO(soubhik): refactor task generation/sending into a separate function that we can run as goroutine
-	ticker := time.NewTicker(10 * time.Second)
-	agg.logger.Infof("Aggregator set to send new task every 10 seconds...")
-	defer ticker.Stop()
-	taskNum := int64(0)
-	// ticker doesn't tick immediately, so we send the first task here
-	// see https://github.com/golang/go/issues/17601
-	_ = agg.sendNewTask(big.NewInt(taskNum))
-	taskNum++
-
+	subTaskCreated := agg.avsSubscriber.SubscribeToNewTasks(agg.newTaskCreatedChan)
+	subTaskResponded := agg.avsSubscriber.SubscribeToTaskResponses(agg.newTaskRespondedChan)
 	for {
 		select {
 		case <-ctx.Done():
 			return nil
+		case err := <-subTaskCreated.Err():
+			agg.logger.Error("Error in websocket subscription for NewTaskCreated", "err", err)
+			subTaskCreated.Unsubscribe()
+			subTaskCreated = agg.avsSubscriber.SubscribeToNewTasks(agg.newTaskCreatedChan)
+		case newTaskCreatedLog := <-agg.newTaskCreatedChan:
+			agg.logger.Info("Received new task", "newTaskCreatedLog", newTaskCreatedLog)
+			// agg.metrics.IncNumTasksReceived()
+			if err := agg.processTaskCreatedLog(newTaskCreatedLog); err != nil {
+				agg.logger.Error("Failed to process new task", "err", err)
+			}
+		case err := <-subTaskResponded.Err():
+			agg.logger.Error("Error in websocket subscription for TaskResponded", "err", err)
+			subTaskResponded.Unsubscribe()
+			subTaskResponded = agg.avsSubscriber.SubscribeToTaskResponses(agg.newTaskRespondedChan)
+		case taskRespondedLog := <-agg.newTaskRespondedChan:
+			agg.logger.Info("Received task response", "taskRespondedLog", taskRespondedLog)
+			// agg.metrics.IncNumTaskResponsesReceived()
 		case blsAggServiceResp := <-agg.blsAggregationService.GetResponseChannel():
 			agg.logger.Info("Received response from blsAggregationService", "blsAggServiceResp", blsAggServiceResp)
 			agg.sendAggregatedResponseToContract(blsAggServiceResp)
-		case <-ticker.C:
-			err := agg.sendNewTask(big.NewInt(taskNum))
-			taskNum++
-			if err != nil {
-				// we log the errors inside sendNewTask() so here we just continue to the next task
-				continue
-			}
 		}
 	}
 }
@@ -193,28 +204,27 @@ func (agg *Aggregator) sendAggregatedResponseToContract(blsAggServiceResp blsagg
 	}
 }
 
-// sendNewTask sends a new task to the task manager contract, and updates the Task dict struct
-// with the information of operators opted into quorum 0 at the block of task creation.
-func (agg *Aggregator) sendNewTask(numToSquare *big.Int) error {
-	agg.logger.Info("Aggregator sending new task", "numberToSquare", numToSquare)
-	// Send number to square to the task manager contract
-	newTask, taskIndex, err := agg.avsWriter.SendNewTaskNumberToSquare(context.Background(), numToSquare, types.QUORUM_THRESHOLD_NUMERATOR, types.QUORUM_NUMBERS)
-	if err != nil {
-		agg.logger.Error("Aggregator failed to send number to square", "err", err)
-		return err
-	}
-
+func (agg *Aggregator) processTaskCreatedLog(taskLog *cstaskmanager.ContractIncredibleSquaringTaskManagerNewTaskCreated) error {
 	agg.tasksMu.Lock()
-	agg.tasks[taskIndex] = newTask
+	agg.tasks[taskLog.TaskIndex] = taskLog.Task
 	agg.tasksMu.Unlock()
 
-	quorumThresholdPercentages := make([]uint32, len(newTask.QuorumNumbers))
-	for i, _ := range newTask.QuorumNumbers {
-		quorumThresholdPercentages[i] = newTask.QuorumThresholdPercentage
+	quorumThresholdPercentages := make([]uint32, len(taskLog.Task.QuorumNumbers))
+	for i, _ := range taskLog.Task.QuorumNumbers {
+		quorumThresholdPercentages[i] = taskLog.Task.QuorumThresholdPercentage
 	}
 	// TODO(samlaf): we use seconds for now, but we should ideally pass a blocknumber to the blsAggregationService
 	// and it should monitor the chain and only expire the task aggregation once the chain has reached that block number.
 	taskTimeToExpiry := taskChallengeWindowBlock * blockTimeSeconds
-	agg.blsAggregationService.InitializeNewTask(taskIndex, newTask.TaskCreatedBlock, newTask.QuorumNumbers, quorumThresholdPercentages, taskTimeToExpiry)
+	err := agg.blsAggregationService.InitializeNewTask(
+		taskLog.TaskIndex,
+		taskLog.Task.TaskCreatedBlock,
+		taskLog.Task.QuorumNumbers,
+		quorumThresholdPercentages,
+		taskTimeToExpiry,
+	)
+	if err != nil {
+		return err
+	}
 	return nil
 }

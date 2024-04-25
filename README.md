@@ -104,7 +104,8 @@ make clean
 make build-contracts
 make bindings
 make start-anvil-all-deployed
+make start-aggregator
 make cli-setup-operator
-go run cli/*.go run-avs
+make cli-run-avs
 curl -X POST -d '{ "number": "2" }'  http://127.0.0.1:8080/v1/api/task
 ```
