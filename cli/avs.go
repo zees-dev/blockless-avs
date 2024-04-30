@@ -11,8 +11,10 @@ import (
 	"runtime"
 	"time"
 
+	"github.com/cockroachdb/pebble"
 	"github.com/urfave/cli/v2"
 	avs "github.com/zees-dev/blockless-avs"
+	"github.com/zees-dev/blockless-avs/core/logging"
 	node "github.com/zees-dev/blockless-avs/node/pkg"
 )
 
@@ -21,8 +23,7 @@ import (
 
 func RunAVS(c *cli.Context) error {
 	app := avs.GetAppConfig(c)
-	node.ParseFlags(app) // Parse flags (again) and set the AVS config in the app state.
-	logger := app.Logger
+	logger := app.Logger.(*logging.ZeroLogger).Inner()
 
 	// Signal catching for clean shutdown.
 	sig := make(chan os.Signal, 1)
@@ -60,31 +61,34 @@ func RunAVS(c *cli.Context) error {
 	// Register API routes.
 	node.RegisterAPIRoutes(app, router)
 
-	// // TODO: B7s setup below
-	// // Open the pebble peer database.
-	// pdb, err := pebble.Open(cfg.PeerDatabasePath, &pebble.Options{Logger: &avs.PebbleNoopLogger{}})
-	// if err != nil {
-	// 	log.Error().Err(err).Str("db", cfg.PeerDatabasePath).Msg("could not open pebble peer database")
-	// }
-	// defer pdb.Close()
+	// load vars
 
-	// // Open the pebble function database.
-	// fdb, err := pebble.Open(cfg.FunctionDatabasePath, &pebble.Options{Logger: &avs.PebbleNoopLogger{}})
-	// if err != nil {
-	// 	log.Error().Err(err).Str("db", cfg.FunctionDatabasePath).Msg("could not open pebble function database")
-	// }
-	// defer fdb.Close()
+	logger.Info().Msgf("Peer database path %s", app.BlocklessConfig.PeerDB)
 
-	// // Boot P2P Network
-	// avs.RunP2P(ctx, logger, *cfg, done, failed, pdb, fdb)
+	// Open the pebble peer database.
+	pdb, err := pebble.Open(app.BlocklessConfig.PeerDB, &pebble.Options{Logger: &node.PebbleNoopLogger{}})
+	if err != nil {
+		logger.Error().Err(err).Str("db", app.BlocklessConfig.PeerDB).Msg("could not open pebble peer database")
+	}
+	defer pdb.Close()
 
-	// if !app.Headless {
-	// 	logger.Info().Msg("Opening browser")
-	// 	go func() {
-	// 		waitForServer(serverURL)
-	// 		openbrowser(serverURL)
-	// 	}()
-	// }
+	// Open the pebble function database.
+	fdb, err := pebble.Open(app.BlocklessConfig.FunctionDB, &pebble.Options{Logger: &node.PebbleNoopLogger{}})
+	if err != nil {
+		logger.Error().Err(err).Str("db", app.BlocklessConfig.FunctionDB).Msg("could not open pebble function database")
+	}
+	defer fdb.Close()
+
+	// Boot P2P Network
+	node.RunP2P(ctx, logger, *app.BlocklessConfig, done, failed, pdb, fdb)
+
+	if !app.Headless {
+		logger.Info().Msg("Opening browser...")
+		// 	go func() {
+		// 		waitForServer(serverURL)
+		// 		openbrowser(serverURL)
+		// 	}()
+	}
 
 	// Start API in a separate goroutine.
 	v1 := http.NewServeMux()
@@ -137,7 +141,7 @@ func Middlewares(app *avs.AppConfig) func(next http.Handler) http.Handler {
 			start := time.Now()
 			wrapped := &wrappedWriter{ResponseWriter: w, status: http.StatusOK}
 			next.ServeHTTP(wrapped, r)
-			app.Logger.Info().Int("status", wrapped.status).Str("method", r.Method).Str("path", r.URL.Path).Dur("duration", time.Since(start)).Msg("http request")
+			app.Logger.Info("status", wrapped.status, "method", r.Method, "path", r.URL.Path, "duration", time.Since(start), "http request")
 		})
 	}
 
@@ -152,7 +156,7 @@ func waitForServer(app *avs.AppConfig, url string) {
 		resp, err := http.Get(url)
 		if err == nil && resp.StatusCode == http.StatusOK {
 			resp.Body.Close() // Don't forget to close the response body.
-			app.Logger.Info().Msg("App is Running. CTRL+C to quit.")
+			app.Logger.Info("App is Running. CTRL+C to quit.")
 			return
 		}
 		// Close the unsuccessful response body to avoid leaking resources.
@@ -178,6 +182,6 @@ func openbrowser(app *avs.AppConfig, url string) {
 		err = fmt.Errorf("unsupported platform")
 	}
 	if err != nil {
-		app.Logger.Fatal().Err(err)
+		app.Logger.Fatal("Failed to open browser", "err", err)
 	}
 }

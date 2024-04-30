@@ -9,6 +9,7 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/urfave/cli/v2"
+	"github.com/zees-dev/blockless-avs/core/logging"
 
 	"github.com/Layr-Labs/eigensdk-go/chainio/clients/eth"
 	"github.com/Layr-Labs/eigensdk-go/chainio/txmgr"
@@ -77,20 +78,17 @@ func NewConfig(ctx *cli.Context) (*Config, error) {
 	}
 	sdkutils.ReadJsonConfig(credibleSquaringDeploymentFilePath, &credibleSquaringDeploymentRaw)
 
-	logger, err := sdklogging.NewZapLogger(configRaw.Environment)
-	if err != nil {
-		return nil, err
-	}
+	logger := logging.NewZeroLogger(logging.LogLevel(configRaw.Environment))
 
 	ethRpcClient, err := eth.NewClient(configRaw.EthRpcUrl)
 	if err != nil {
-		logger.Errorf("Cannot create http ethclient", "err", err)
+		logger.Error("Cannot create http ethclient", "err", err)
 		return nil, err
 	}
 
 	ethWsClient, err := eth.NewClient(configRaw.EthWsUrl)
 	if err != nil {
-		logger.Errorf("Cannot create ws ethclient", "err", err)
+		logger.Error("Cannot create ws ethclient", "err", err)
 		return nil, err
 	}
 
@@ -153,10 +151,26 @@ func (c *Config) validate() {
 
 var (
 	/* Required Flags */
+	HeadlessFlag = &cli.BoolFlag{
+		Name:       "headless",
+		Required:   true,
+		Usage:      "Run blockless node in headless mode",
+		Value:      true,
+		HasBeenSet: true,
+	}
+	DevModeFlag = &cli.BoolFlag{
+		Name:       "devmode",
+		Required:   true,
+		Usage:      "Run in development mode",
+		Value:      true,
+		HasBeenSet: true,
+	}
 	ConfigFileFlag = &cli.StringFlag{
-		Name:     "config",
-		Required: true,
-		Usage:    "Load configuration from `FILE`",
+		Name:       "config",
+		Usage:      "Load configuration from `FILE`",
+		Value:      "config-files/operator.anvil.yaml",
+		Required:   true,
+		HasBeenSet: true,
 	}
 	CredibleSquaringDeploymentFileFlag = &cli.StringFlag{
 		Name:     "credible-squaring-deployment",

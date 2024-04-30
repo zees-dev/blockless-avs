@@ -4,16 +4,16 @@ import (
 	"errors"
 	"math/big"
 	"os"
-	"time"
 
 	sdkecdsa "github.com/Layr-Labs/eigensdk-go/crypto/ecdsa"
 	sdkutils "github.com/Layr-Labs/eigensdk-go/utils"
 	"github.com/ethereum/go-ethereum/common"
-	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
 	"github.com/urfave/cli/v2"
 	avs "github.com/zees-dev/blockless-avs"
 	"github.com/zees-dev/blockless-avs/core/config"
+	"github.com/zees-dev/blockless-avs/core/logging"
+	node "github.com/zees-dev/blockless-avs/node/pkg"
 	"github.com/zees-dev/blockless-avs/operator"
 	"github.com/zees-dev/blockless-avs/types"
 )
@@ -28,38 +28,40 @@ func main() {
 
 	// globally required flags
 	app.Flags = []cli.Flag{
-		&cli.StringFlag{
-			Name:  "config",
-			Usage: "Load configuration from `FILE`",
-			Value: "config-files/operator.anvil.yaml",
-			// Required: true,
-		},
+		config.DevModeFlag,
+		config.ConfigFileFlag,
+		config.HeadlessFlag,
 	}
 
 	// init app state, store in context
 	app.Before = func(c *cli.Context) error {
-		// Use ConsoleWriter to format logs for human readability - dev mode only
-		output := zerolog.ConsoleWriter{Out: os.Stderr, TimeFormat: time.RFC3339}
-		logger := zerolog.New(output).With().Timestamp().Logger().Level(zerolog.DebugLevel)
-
-		// logger := zerolog.New(os.Stderr).With().Timestamp().Logger().Level(zerolog.DebugLevel)
+		logger := logging.NewZeroLogger(logging.Development)
 
 		// setup operator from config file - provided as flag
+		devMode := c.Bool(config.DevModeFlag.Name)
 		configPath := c.String(config.ConfigFileFlag.Name)
+		headless := c.Bool(config.HeadlessFlag.Name)
+
 		nodeConfig := types.NodeConfig{}
 		if err := sdkutils.ReadYamlConfig(configPath, &nodeConfig); err != nil {
 			return err
 		}
-		operator, err := operator.NewOperatorFromConfig(nodeConfig)
+		operator, err := operator.NewOperatorFromConfig(logger, nodeConfig)
 		if err != nil {
 			return err
 		}
 
+		if !headless {
+			return errors.New("only headless mode is supported")
+		}
+
 		c.App.Metadata[avs.AppConfigKey] = &avs.AppConfig{
 			AppName:    AppName,
-			Logger:     &logger,
+			Logger:     logger,
 			NodeConfig: &nodeConfig,
 			Operator:   operator,
+			DevMode:    devMode,
+			Headless:   headless,
 		}
 		return nil
 	}
@@ -69,7 +71,33 @@ func main() {
 			Name:   "run-avs",
 			Usage:  "Starts the server",
 			Action: RunAVS,
-			// Flags: []cli.Flag{config.ConfigFileFlag},
+			Before: func(c *cli.Context) error {
+				// get app config
+				app := c.App.Metadata[avs.AppConfigKey].(*avs.AppConfig)
+
+				b7sConfig := node.ParseFlags(c)
+				app.BlocklessConfig = &b7sConfig
+				return nil
+			},
+			Flags: []cli.Flag{
+				node.Role,
+				node.PeerDatabasePath,
+				node.FunctionDatabasePath,
+				node.Workspace,
+				node.Concurrency,
+				node.LoadAttributes,
+				node.PrivateKey,
+				node.HostAddress,
+				node.HostPort,
+				node.BootNodes,
+				node.DialBackAddress,
+				node.DialBackPort,
+				node.Websocket,
+				node.WebsocketPort,
+				node.DialBackWebsocketPort,
+				node.CPUPercentage,
+				node.MemoryMaxKB,
+			},
 		},
 		{
 			Name:    "register-operator-with-eigenlayer",
@@ -93,7 +121,7 @@ func main() {
 				amountStr := ctx.String("amount")
 				amount, ok := new(big.Int).SetString(amountStr, 10)
 				if !ok {
-					app.Logger.Error().Msg("Error converting amount to big.Int")
+					app.Logger.Error("Error converting amount to big.Int")
 					return errors.New("Error converting amount to big.Int")
 				}
 				return app.Operator.DepositIntoStrategy(strategyAddr, amount)
@@ -120,7 +148,7 @@ func main() {
 				app := ctx.App.Metadata[avs.AppConfigKey].(*avs.AppConfig)
 				ecdsaKeyPassword, ok := os.LookupEnv("OPERATOR_ECDSA_KEY_PASSWORD")
 				if !ok {
-					app.Logger.Info().Msg("OPERATOR_ECDSA_KEY_PASSWORD env var not set. using empty string")
+					app.Logger.Info("OPERATOR_ECDSA_KEY_PASSWORD env var not set. using empty string")
 				}
 				operatorEcdsaPrivKey, err := sdkecdsa.ReadKey(
 					app.NodeConfig.EcdsaPrivateKeyStorePath,
@@ -139,7 +167,7 @@ func main() {
 			Aliases: []string{"dowa"},
 			Action: func(ctx *cli.Context) error {
 				app := ctx.App.Metadata[avs.AppConfigKey].(*avs.AppConfig)
-				app.Logger.Fatal().Msg("Command not implemented.")
+				app.Logger.Fatal("Command not implemented.")
 				return nil
 			},
 			Flags: []cli.Flag{config.ConfigFileFlag},

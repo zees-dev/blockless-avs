@@ -154,7 +154,7 @@ func (agg *Aggregator) Start(ctx context.Context) error {
 			subTaskResponded.Unsubscribe()
 			subTaskResponded = agg.avsSubscriber.SubscribeToTaskResponses(agg.newTaskRespondedChan)
 		case taskRespondedLog := <-agg.newTaskRespondedChan:
-			agg.logger.Info("Received task response", "taskRespondedLog", taskRespondedLog)
+			agg.logger.Info("Received task response successfully!; taskRespondedLog: %#v", taskRespondedLog)
 			// agg.metrics.IncNumTaskResponsesReceived()
 		case blsAggServiceResp := <-agg.blsAggregationService.GetResponseChannel():
 			agg.logger.Info("Received response from blsAggregationService", "blsAggServiceResp", blsAggServiceResp)

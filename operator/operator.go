@@ -25,7 +25,6 @@ import (
 	"github.com/Layr-Labs/eigensdk-go/crypto/bls"
 	sdkecdsa "github.com/Layr-Labs/eigensdk-go/crypto/ecdsa"
 	"github.com/Layr-Labs/eigensdk-go/logging"
-	sdklogging "github.com/Layr-Labs/eigensdk-go/logging"
 	sdkmetrics "github.com/Layr-Labs/eigensdk-go/metrics"
 	"github.com/Layr-Labs/eigensdk-go/metrics/collectors/economic"
 	rpccalls "github.com/Layr-Labs/eigensdk-go/metrics/collectors/rpc_calls"
@@ -70,17 +69,7 @@ type Operator struct {
 // TODO(samlaf): config is a mess right now, since the chainio client constructors
 //
 //	take the config in core (which is shared with aggregator and challenger)
-func NewOperatorFromConfig(c types.NodeConfig) (*Operator, error) {
-	var logLevel logging.LogLevel
-	if c.Production {
-		logLevel = sdklogging.Production
-	} else {
-		logLevel = sdklogging.Development
-	}
-	logger, err := sdklogging.NewZapLogger(logLevel)
-	if err != nil {
-		return nil, err
-	}
+func NewOperatorFromConfig(logger logging.Logger, c types.NodeConfig) (*Operator, error) {
 	reg := prometheus.NewRegistry()
 	eigenMetrics := sdkmetrics.NewEigenMetrics(AVS_NAME, c.EigenMetricsIpPortAddress, reg, logger)
 	avsAndEigenMetrics := metrics.NewAvsAndEigenMetrics(AVS_NAME, eigenMetrics, reg)
@@ -89,6 +78,7 @@ func NewOperatorFromConfig(c types.NodeConfig) (*Operator, error) {
 	nodeApi := nodeapi.NewNodeApi(AVS_NAME, SEM_VER, c.NodeApiIpPortAddress, logger)
 
 	var ethRpcClient, ethWsClient eth.EthClient
+	var err error
 	if c.EnableMetrics {
 		rpcCallsCollector := rpccalls.NewCollector(AVS_NAME, reg)
 		ethRpcClient, err = eth.NewInstrumentedClient(c.EthRpcUrl, rpcCallsCollector)
@@ -218,7 +208,6 @@ func NewOperatorFromConfig(c types.NodeConfig) (*Operator, error) {
 		newTaskCreatedChan:                 make(chan *cstaskmanager.ContractIncredibleSquaringTaskManagerNewTaskCreated),
 		credibleSquaringServiceManagerAddr: common.HexToAddress(c.AVSRegistryCoordinatorAddress),
 		operatorId:                         [32]byte{0}, // this is set below
-
 	}
 
 	if c.RegisterOperatorOnStartup {

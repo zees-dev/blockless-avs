@@ -67,7 +67,7 @@ func RegisterAPIRoutes(cfg *avs.AppConfig, mux *http.ServeMux) {
 			Number string `json:"number"` // Use string to initially parse big integers
 		}
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-			cfg.Logger.Error().Msgf("Failed to decode JSON request: %v", err)
+			cfg.Logger.Error("Failed to decode JSON request: %v", err)
 			http.Error(w, "Invalid request body", http.StatusBadRequest)
 			return
 		}
@@ -75,7 +75,7 @@ func RegisterAPIRoutes(cfg *avs.AppConfig, mux *http.ServeMux) {
 		// Convert string to big.Int
 		numToSquare := new(big.Int)
 		if _, ok := numToSquare.SetString(req.Number, 10); !ok {
-			cfg.Logger.Error().Msg("Invalid number format")
+			cfg.Logger.Error("Invalid number format")
 			http.Error(w, "Invalid number format", http.StatusBadRequest)
 			return
 		}
@@ -84,7 +84,7 @@ func RegisterAPIRoutes(cfg *avs.AppConfig, mux *http.ServeMux) {
 		// NOTE: account assigned to operator pays for the gas
 		newTask, taskIndex, err := cfg.Operator.SubmitNewTask(numToSquare)
 		if err != nil {
-			cfg.Logger.Error().Msgf("Operator failed to send number to square", "err", err)
+			cfg.Logger.Error("Operator failed to send number to square", "err", err)
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
@@ -108,7 +108,7 @@ func RegisterAPIRoutes(cfg *avs.AppConfig, mux *http.ServeMux) {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
 		if err := json.NewEncoder(w).Encode(response); err != nil {
-			cfg.Logger.Error().Msgf("Failed to encode response: %v", err)
+			cfg.Logger.Error("Failed to encode response: %v", err)
 			http.Error(w, "Error encoding response", http.StatusInternalServerError)
 		}
 	})
