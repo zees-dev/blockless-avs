@@ -66,8 +66,6 @@ __OPERATOR__: ##
 cli-setup-operator: ## registers operator with eigenlayer and avs
 	echo "Updating operator.anvil.yaml config..."
 	make cli-update-operator-config
-	# echo "Sending funds to operator (pay tx fees)"
-	# make send-fund
 	echo "Registering operator with eigenlayer"
 	make cli-register-operator-with-eigenlayer
 	echo "Depositing into mocktoken strategy"
@@ -97,9 +95,6 @@ cli-print-operator-status:
 cli-run-avs:
 	go run cli/*.go run-avs
 
-send-fund: ## sends fund to the operator saved in config-files/keys/test.ecdsa.key.json
-	cast send 0x860B6912C2d0337ef05bbC89b0C2CB6CbAEAB4A5 --value 10ether --private-key 0x2a871d0798f97d79848a013d4936a73bf4cc922c825d33c1cf7073dff6d409c6
-
 -----------------------------: ## 
 # We pipe all zapper logs through https://github.com/maoueh/zap-pretty so make sure to install it
 # TODO: piping to zap-pretty only works when zapper environment is set to production, unsure why
@@ -123,18 +118,3 @@ start-challenger: ##
 run-plugin: ## 
 	go run plugin/cmd/main.go --config config-files/operator.anvil.yaml
 -----------------------------: ## 
-_____HELPER_____: ## 
-mocks: ## generates mocks for tests
-	go install go.uber.org/mock/mockgen@v0.3.0
-	go generate ./...
-
-tests-unit: ## runs all unit tests
-	go test $$(go list ./... | grep -v /integration) -coverprofile=coverage.out -covermode=atomic --timeout 15s
-	go tool cover -html=coverage.out -o coverage.html
-
-tests-contract: ## runs all forge tests
-	cd contracts && forge test
-
-tests-integration: ## runs all integration tests
-	go test ./tests/integration/... -v -count=1
-
