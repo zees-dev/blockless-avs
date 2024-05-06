@@ -5,18 +5,18 @@ import (
 	"sync"
 	"time"
 
-	sdkclients "github.com/Layr-Labs/eigensdk-go/chainio/clients"
-	"github.com/Layr-Labs/eigensdk-go/logging"
-	"github.com/Layr-Labs/eigensdk-go/services/avsregistry"
-	blsagg "github.com/Layr-Labs/eigensdk-go/services/bls_aggregation"
-	oppubkeysserv "github.com/Layr-Labs/eigensdk-go/services/operatorpubkeys"
-	sdktypes "github.com/Layr-Labs/eigensdk-go/types"
 	"github.com/zees-dev/blockless-avs/aggregator/types"
+	cstaskmanager "github.com/zees-dev/blockless-avs/contracts/bindings/IncredibleSquaringTaskManager"
 	"github.com/zees-dev/blockless-avs/core"
 	"github.com/zees-dev/blockless-avs/core/chainio"
 	"github.com/zees-dev/blockless-avs/core/config"
 
-	cstaskmanager "github.com/zees-dev/blockless-avs/contracts/bindings/IncredibleSquaringTaskManager"
+	"github.com/Layr-Labs/eigensdk-go/chainio/clients"
+	"github.com/Layr-Labs/eigensdk-go/logging"
+	"github.com/Layr-Labs/eigensdk-go/services/avsregistry"
+	blsagg "github.com/Layr-Labs/eigensdk-go/services/bls_aggregation"
+	oprsinfoserv "github.com/Layr-Labs/eigensdk-go/services/operatorsinfo"
+	sdktypes "github.com/Layr-Labs/eigensdk-go/types"
 )
 
 const (
@@ -97,7 +97,7 @@ func NewAggregator(c *config.Config) (*Aggregator, error) {
 		return nil, err
 	}
 
-	chainioConfig := sdkclients.BuildAllConfig{
+	chainioConfig := clients.BuildAllConfig{
 		EthHttpUrl:                 c.EthHttpRpcUrl,
 		EthWsUrl:                   c.EthWsRpcUrl,
 		RegistryCoordinatorAddr:    c.IncredibleSquaringRegistryCoordinatorAddr.String(),
@@ -105,13 +105,13 @@ func NewAggregator(c *config.Config) (*Aggregator, error) {
 		AvsName:                    avsName,
 		PromMetricsIpPortAddress:   ":9090",
 	}
-	clients, err := sdkclients.BuildAll(chainioConfig, c.AggregatorAddress, c.SignerFn, c.Logger)
+	clients, err := clients.BuildAll(chainioConfig, c.EcdsaPrivateKey, c.Logger)
 	if err != nil {
 		c.Logger.Errorf("Cannot create sdk clients", "err", err)
 		return nil, err
 	}
 
-	operatorPubkeysService := oppubkeysserv.NewOperatorPubkeysServiceInMemory(context.Background(), clients.AvsRegistryChainSubscriber, clients.AvsRegistryChainReader, c.Logger)
+	operatorPubkeysService := oprsinfoserv.NewOperatorsInfoServiceInMemory(context.Background(), clients.AvsRegistryChainSubscriber, clients.AvsRegistryChainReader, c.Logger)
 	avsRegistryService := avsregistry.NewAvsRegistryServiceChainCaller(avsReader, operatorPubkeysService, c.Logger)
 	blsAggregationService := blsagg.NewBlsAggregatorService(avsRegistryService, c.Logger)
 
@@ -209,17 +209,21 @@ func (agg *Aggregator) processTaskCreatedLog(taskLog *cstaskmanager.ContractIncr
 	agg.tasks[taskLog.TaskIndex] = taskLog.Task
 	agg.tasksMu.Unlock()
 
-	quorumThresholdPercentages := make([]uint32, len(taskLog.Task.QuorumNumbers))
-	for i, _ := range taskLog.Task.QuorumNumbers {
-		quorumThresholdPercentages[i] = taskLog.Task.QuorumThresholdPercentage
+	quorumThresholdPercentages := make(sdktypes.QuorumThresholdPercentages, len(taskLog.Task.QuorumNumbers))
+	for i := range taskLog.Task.QuorumNumbers {
+		quorumThresholdPercentages[i] = sdktypes.QuorumThresholdPercentage(taskLog.Task.QuorumThresholdPercentage)
 	}
 	// TODO(samlaf): we use seconds for now, but we should ideally pass a blocknumber to the blsAggregationService
 	// and it should monitor the chain and only expire the task aggregation once the chain has reached that block number.
 	taskTimeToExpiry := taskChallengeWindowBlock * blockTimeSeconds
+	var quorumNums sdktypes.QuorumNums
+	for _, quorumNum := range taskLog.Task.QuorumNumbers {
+		quorumNums = append(quorumNums, sdktypes.QuorumNum(quorumNum))
+	}
 	err := agg.blsAggregationService.InitializeNewTask(
 		taskLog.TaskIndex,
 		taskLog.Task.TaskCreatedBlock,
-		taskLog.Task.QuorumNumbers,
+		quorumNums,
 		quorumThresholdPercentages,
 		taskTimeToExpiry,
 	)

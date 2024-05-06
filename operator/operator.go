@@ -12,15 +12,17 @@ import (
 
 	"github.com/zees-dev/blockless-avs/aggregator"
 
+	"github.com/zees-dev/blockless-avs/aggregator/types"
 	cstaskmanager "github.com/zees-dev/blockless-avs/contracts/bindings/IncredibleSquaringTaskManager"
 	"github.com/zees-dev/blockless-avs/core"
 	"github.com/zees-dev/blockless-avs/core/chainio"
 	"github.com/zees-dev/blockless-avs/metrics"
-	"github.com/zees-dev/blockless-avs/types"
+	avstypes "github.com/zees-dev/blockless-avs/types"
 
 	"github.com/Layr-Labs/eigensdk-go/chainio/clients"
 	sdkelcontracts "github.com/Layr-Labs/eigensdk-go/chainio/clients/elcontracts"
 	"github.com/Layr-Labs/eigensdk-go/chainio/clients/eth"
+	"github.com/Layr-Labs/eigensdk-go/chainio/clients/wallet"
 	"github.com/Layr-Labs/eigensdk-go/chainio/txmgr"
 	"github.com/Layr-Labs/eigensdk-go/crypto/bls"
 	sdkecdsa "github.com/Layr-Labs/eigensdk-go/crypto/ecdsa"
@@ -37,9 +39,9 @@ const AVS_NAME = "incredible-squaring"
 const SEM_VER = "0.0.1"
 
 type Operator struct {
-	config    types.NodeConfig
+	config    avstypes.NodeConfig
 	logger    logging.Logger
-	ethClient eth.EthClient
+	ethClient eth.Client
 	// TODO(samlaf): remove both avsWriter and eigenlayerWrite from operator
 	// they are only used for registration, so we should make a special registration package
 	// this way, auditing this operator code makes it obvious that operators don't need to
@@ -54,7 +56,7 @@ type Operator struct {
 	eigenlayerReader sdkelcontracts.ELReader
 	eigenlayerWriter sdkelcontracts.ELWriter
 	blsKeypair       *bls.KeyPair
-	operatorId       bls.OperatorId
+	operatorId       sdktypes.OperatorId
 	operatorAddr     common.Address
 	// receive new tasks in this chan (typically from listening to onchain event)
 	newTaskCreatedChan chan *cstaskmanager.ContractIncredibleSquaringTaskManagerNewTaskCreated
@@ -69,7 +71,7 @@ type Operator struct {
 // TODO(samlaf): config is a mess right now, since the chainio client constructors
 //
 //	take the config in core (which is shared with aggregator and challenger)
-func NewOperatorFromConfig(logger logging.Logger, c types.NodeConfig) (*Operator, error) {
+func NewOperatorFromConfig(logger logging.Logger, c avstypes.NodeConfig) (*Operator, error) {
 	reg := prometheus.NewRegistry()
 	eigenMetrics := sdkmetrics.NewEigenMetrics(AVS_NAME, c.EigenMetricsIpPortAddress, reg, logger)
 	avsAndEigenMetrics := metrics.NewAvsAndEigenMetrics(AVS_NAME, eigenMetrics, reg)
@@ -77,7 +79,7 @@ func NewOperatorFromConfig(logger logging.Logger, c types.NodeConfig) (*Operator
 	// Setup Node Api
 	nodeApi := nodeapi.NewNodeApi(AVS_NAME, SEM_VER, c.NodeApiIpPortAddress, logger)
 
-	var ethRpcClient, ethWsClient eth.EthClient
+	var ethRpcClient, ethWsClient eth.Client
 	var err error
 	if c.EnableMetrics {
 		rpcCallsCollector := rpccalls.NewCollector(AVS_NAME, reg)
@@ -142,11 +144,22 @@ func NewOperatorFromConfig(logger logging.Logger, c types.NodeConfig) (*Operator
 		AvsName:                    AVS_NAME,
 		PromMetricsIpPortAddress:   c.EigenMetricsIpPortAddress,
 	}
-	sdkClients, err := clients.BuildAll(chainioConfig, common.HexToAddress(c.OperatorAddress), signerV2, logger)
+	operatorEcdsaPrivateKey, err := sdkecdsa.ReadKey(
+		c.EcdsaPrivateKeyStorePath,
+		ecdsaKeyPassword,
+	)
+	if err != nil {
+		return nil, err
+	}
+	sdkClients, err := clients.BuildAll(chainioConfig, operatorEcdsaPrivateKey, logger)
 	if err != nil {
 		panic(err)
 	}
-	txMgr := txmgr.NewSimpleTxManager(ethRpcClient, logger, signerV2, common.HexToAddress(c.OperatorAddress))
+	skWallet, err := wallet.NewPrivateKeyWallet(ethRpcClient, signerV2, common.HexToAddress(c.OperatorAddress), logger)
+	if err != nil {
+		panic(err)
+	}
+	txMgr := txmgr.NewSimpleTxManager(skWallet, ethRpcClient, logger, common.HexToAddress(c.OperatorAddress))
 
 	avsWriter, err := chainio.BuildAvsWriter(
 		txMgr, common.HexToAddress(c.AVSRegistryCoordinatorAddress),
@@ -211,13 +224,6 @@ func NewOperatorFromConfig(logger logging.Logger, c types.NodeConfig) (*Operator
 	}
 
 	if c.RegisterOperatorOnStartup {
-		operatorEcdsaPrivateKey, err := sdkecdsa.ReadKey(
-			c.EcdsaPrivateKeyStorePath,
-			ecdsaKeyPassword,
-		)
-		if err != nil {
-			return nil, err
-		}
 		operator.registerOperatorOnStartup(operatorEcdsaPrivateKey, common.HexToAddress(c.TokenStrategyAddr))
 	}
 
@@ -312,7 +318,7 @@ func (o *Operator) ProcessNewTaskCreatedLog(newTaskCreatedLog *cstaskmanager.Con
 func (o *Operator) SubmitNewTask(numToSquare *big.Int) (*cstaskmanager.IIncredibleSquaringTaskManagerTask, uint32, error) {
 	o.logger.Info("Operator sending new task", "numberToSquare", numToSquare)
 	// Send number to square to the task manager contract
-	newTask, taskIndex, err := o.avsWriter.SendNewTaskNumberToSquare(context.Background(), numToSquare, uint32(100), []byte{0})
+	newTask, taskIndex, err := o.avsWriter.SendNewTaskNumberToSquare(context.Background(), numToSquare, types.QUORUM_THRESHOLD_NUMERATOR, types.QUORUM_NUMBERS)
 	if err != nil {
 		o.logger.Error("Operator failed to send number to square", "err", err)
 		return nil, 0, err

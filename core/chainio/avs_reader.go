@@ -3,16 +3,16 @@ package chainio
 import (
 	"context"
 
+	erc20mock "github.com/zees-dev/blockless-avs/contracts/bindings/ERC20Mock"
+	cstaskmanager "github.com/zees-dev/blockless-avs/contracts/bindings/IncredibleSquaringTaskManager"
+	"github.com/zees-dev/blockless-avs/core/config"
+
 	"github.com/ethereum/go-ethereum/accounts/abi/bind"
 	gethcommon "github.com/ethereum/go-ethereum/common"
 
 	sdkavsregistry "github.com/Layr-Labs/eigensdk-go/chainio/clients/avsregistry"
 	"github.com/Layr-Labs/eigensdk-go/chainio/clients/eth"
 	logging "github.com/Layr-Labs/eigensdk-go/logging"
-
-	erc20mock "github.com/zees-dev/blockless-avs/contracts/bindings/ERC20Mock"
-	cstaskmanager "github.com/zees-dev/blockless-avs/contracts/bindings/IncredibleSquaringTaskManager"
-	"github.com/zees-dev/blockless-avs/core/config"
 )
 
 type AvsReaderer interface {
@@ -33,9 +33,9 @@ type AvsReader struct {
 var _ AvsReaderer = (*AvsReader)(nil)
 
 func BuildAvsReaderFromConfig(c *config.Config) (*AvsReader, error) {
-	return BuildAvsReader(c.IncredibleSquaringRegistryCoordinatorAddr, c.OperatorStateRetrieverAddr, c.EthHttpClient, c.Logger)
+	return BuildAvsReader(c.IncredibleSquaringRegistryCoordinatorAddr, c.OperatorStateRetrieverAddr, *c.EthHttpClient, c.Logger)
 }
-func BuildAvsReader(registryCoordinatorAddr, operatorStateRetrieverAddr gethcommon.Address, ethHttpClient eth.EthClient, logger logging.Logger) (*AvsReader, error) {
+func BuildAvsReader(registryCoordinatorAddr, operatorStateRetrieverAddr gethcommon.Address, ethHttpClient eth.Client, logger logging.Logger) (*AvsReader, error) {
 	avsManagersBindings, err := NewAvsManagersBindings(registryCoordinatorAddr, operatorStateRetrieverAddr, ethHttpClient, logger)
 	if err != nil {
 		return nil, err

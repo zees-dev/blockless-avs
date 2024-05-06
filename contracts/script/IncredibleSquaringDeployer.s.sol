@@ -5,6 +5,7 @@ import "@openzeppelin/contracts/proxy/transparent/ProxyAdmin.sol";
 
 import "@eigenlayer/contracts/permissions/PauserRegistry.sol";
 import {IDelegationManager} from "@eigenlayer/contracts/interfaces/IDelegationManager.sol";
+import {IAVSDirectory} from "@eigenlayer/contracts/interfaces/IAVSDirectory.sol";
 import {IStrategyManager, IStrategy} from "@eigenlayer/contracts/interfaces/IStrategyManager.sol";
 import {ISlasher} from "@eigenlayer/contracts/interfaces/ISlasher.sol";
 import {StrategyBaseTVLLimits} from "@eigenlayer/contracts/strategies/StrategyBaseTVLLimits.sol";
@@ -37,10 +38,9 @@ contract IncredibleSquaringDeployer is Script, Utils {
     uint32 public constant TASK_RESPONSE_WINDOW_BLOCK = 30;
     uint32 public constant TASK_DURATION_BLOCKS = 0;
     // TODO: right now hardcoding these (this address is anvil's default address 9)
-    address public constant AGGREGATOR_ADDR =
-        0xa0Ee7A142d267C1f36714E4a8F75612F20a79720;
-    address public constant TASK_GENERATOR_ADDR =
-        0x860B6912C2d0337ef05bbC89b0C2CB6CbAEAB4A5;
+    address public constant AGGREGATOR_ADDR = 0xa0Ee7A142d267C1f36714E4a8F75612F20a79720;
+    // TODO: read from file instead; currently retrieved from `config-files/keys/test.ecdsa.key.json`
+    address public constant TASK_GENERATOR_ADDR = 0x860B6912C2d0337ef05bbC89b0C2CB6CbAEAB4A5;
 
     // ERC20 and Strategy: we need to deploy this erc20, create a strategy for it, and whitelist this strategy in the strategymanager
 
@@ -89,6 +89,12 @@ contract IncredibleSquaringDeployer is Script, Utils {
                 ".addresses.delegation"
             )
         );
+        IAVSDirectory avsDirectory = IAVSDirectory(
+            stdJson.readAddress(
+                eigenlayerDeployedContracts,
+                ".addresses.avsDirectory"
+            )
+        );
         ProxyAdmin eigenLayerProxyAdmin = ProxyAdmin(
             stdJson.readAddress(
                 eigenlayerDeployedContracts,
@@ -102,11 +108,11 @@ contract IncredibleSquaringDeployer is Script, Utils {
             )
         );
         StrategyBaseTVLLimits baseStrategyImplementation = StrategyBaseTVLLimits(
-            stdJson.readAddress(
-                eigenlayerDeployedContracts,
-                ".addresses.baseStrategyImplementation"
-            )
-        );
+                stdJson.readAddress(
+                    eigenlayerDeployedContracts,
+                    ".addresses.baseStrategyImplementation"
+                )
+            );
 
         address credibleSquaringCommunityMultisig = msg.sender;
         address credibleSquaringPauser = msg.sender;
@@ -120,6 +126,7 @@ contract IncredibleSquaringDeployer is Script, Utils {
         );
         _deployCredibleSquaringContracts(
             delegationManager,
+            avsDirectory,
             erc20MockStrategy,
             credibleSquaringCommunityMultisig,
             credibleSquaringPauser
@@ -153,11 +160,17 @@ contract IncredibleSquaringDeployer is Script, Utils {
         );
         IStrategy[] memory strats = new IStrategy[](1);
         strats[0] = erc20MockStrategy;
-        strategyManager.addStrategiesToDepositWhitelist(strats);
+        bool[] memory thirdPartyTransfersForbiddenValues = new bool[](1);
+        thirdPartyTransfersForbiddenValues[0] = false;
+        strategyManager.addStrategiesToDepositWhitelist(
+            strats,
+            thirdPartyTransfersForbiddenValues
+        );
     }
 
     function _deployCredibleSquaringContracts(
         IDelegationManager delegationManager,
+        IAVSDirectory avsDirectory,
         IStrategy strat,
         address incredibleSquaringCommunityMultisig,
         address credibleSquaringPauser
@@ -345,21 +358,17 @@ contract IncredibleSquaringDeployer is Script, Utils {
         }
 
         incredibleSquaringServiceManagerImplementation = new IncredibleSquaringServiceManager(
-            delegationManager,
+            avsDirectory,
             registryCoordinator,
             stakeRegistry,
             incredibleSquaringTaskManager
         );
         // Third, upgrade the proxy contracts to use the correct implementation contracts and initialize them.
-        incredibleSquaringProxyAdmin.upgradeAndCall(
+        incredibleSquaringProxyAdmin.upgrade(
             TransparentUpgradeableProxy(
                 payable(address(incredibleSquaringServiceManager))
             ),
-            address(incredibleSquaringServiceManagerImplementation),
-            abi.encodeWithSelector(
-                incredibleSquaringServiceManager.initialize.selector,
-                incredibleSquaringCommunityMultisig
-            )
+            address(incredibleSquaringServiceManagerImplementation)
         );
 
         incredibleSquaringTaskManagerImplementation = new IncredibleSquaringTaskManager(

@@ -11,7 +11,7 @@ OPERATOR_ADDRESS=0x860B6912C2d0337ef05bbC89b0C2CB6CbAEAB4A5
 parent_path=$( cd "$(dirname "${BASH_SOURCE[0]}")" ; pwd -P )
 cd "$parent_path"
 
-# start an anvil instance in the background that has eigenlayer contracts deployed
+# start an anvil instance in the background that has eigenlayer contracts deployed; dump its state to a json file upon exit
 anvil --load-state snapshots/eigenlayer-deployed-anvil-state.json --dump-state snapshots/avs-and-eigenlayer-deployed-anvil-state.json &
 
 cd ../contracts

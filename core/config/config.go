@@ -6,12 +6,14 @@ import (
 	"errors"
 	"os"
 
+	"github.com/zees-dev/blockless-avs/core/logging"
+
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/urfave/cli/v2"
-	"github.com/zees-dev/blockless-avs/core/logging"
 
 	"github.com/Layr-Labs/eigensdk-go/chainio/clients/eth"
+	"github.com/Layr-Labs/eigensdk-go/chainio/clients/wallet"
 	"github.com/Layr-Labs/eigensdk-go/chainio/txmgr"
 	"github.com/Layr-Labs/eigensdk-go/crypto/bls"
 	sdklogging "github.com/Layr-Labs/eigensdk-go/logging"
@@ -118,15 +120,19 @@ func NewConfig(ctx *cli.Context) (*Config, error) {
 	if err != nil {
 		panic(err)
 	}
-	txMgr := txmgr.NewSimpleTxManager(ethRpcClient, logger, signerV2, aggregatorAddr)
+	skWallet, err := wallet.NewPrivateKeyWallet(ethRpcClient, signerV2, aggregatorAddr, logger)
+	if err != nil {
+		panic(err)
+	}
+	txMgr := txmgr.NewSimpleTxManager(skWallet, ethRpcClient, logger, aggregatorAddr)
 
 	config := &Config{
 		EcdsaPrivateKey:            ecdsaPrivateKey,
 		Logger:                     logger,
 		EthWsRpcUrl:                configRaw.EthWsUrl,
 		EthHttpRpcUrl:              configRaw.EthRpcUrl,
-		EthHttpClient:              ethRpcClient,
-		EthWsClient:                ethWsClient,
+		EthHttpClient:              &ethRpcClient,
+		EthWsClient:                &ethWsClient,
 		OperatorStateRetrieverAddr: common.HexToAddress(credibleSquaringDeploymentRaw.Addresses.OperatorStateRetrieverAddr),
 		IncredibleSquaringRegistryCoordinatorAddr: common.HexToAddress(credibleSquaringDeploymentRaw.Addresses.RegistryCoordinatorAddr),
 		AggregatorServerIpPortAddr:                configRaw.AggregatorServerIpPortAddr,

@@ -94,13 +94,14 @@ func (o *Operator) DepositIntoStrategy(strategyAddr common.Address, amount *big.
 }
 
 // Registration specific functions
+// TODO: address this for actual holesky testnet deployment
 func (o *Operator) RegisterOperatorWithAvs(
 	operatorEcdsaKeyPair *ecdsa.PrivateKey,
 ) error {
 	// hardcode these things for now
-	quorumNumbers := []byte{0}
+	quorumNumbers := eigenSdkTypes.QuorumNums{eigenSdkTypes.QuorumNum(0)}
 	socket := "Not Needed"
-	operatorToAvsRegistrationSigSalt := [32]byte{123}
+	operatorToAvsRegistrationSigSalt := [32]byte{124}
 	curBlockNum, err := o.ethClient.BlockNumber(context.Background())
 	if err != nil {
 		o.logger.Errorf("Unable to get current block number")

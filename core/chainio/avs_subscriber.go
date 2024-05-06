@@ -1,6 +1,9 @@
 package chainio
 
 import (
+	cstaskmanager "github.com/zees-dev/blockless-avs/contracts/bindings/IncredibleSquaringTaskManager"
+	"github.com/zees-dev/blockless-avs/core/config"
+
 	"github.com/ethereum/go-ethereum/accounts/abi/bind"
 	gethcommon "github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
@@ -8,9 +11,6 @@ import (
 
 	"github.com/Layr-Labs/eigensdk-go/chainio/clients/eth"
 	sdklogging "github.com/Layr-Labs/eigensdk-go/logging"
-
-	cstaskmanager "github.com/zees-dev/blockless-avs/contracts/bindings/IncredibleSquaringTaskManager"
-	"github.com/zees-dev/blockless-avs/core/config"
 )
 
 type AvsSubscriberer interface {
@@ -32,12 +32,12 @@ func BuildAvsSubscriberFromConfig(config *config.Config) (*AvsSubscriber, error)
 	return BuildAvsSubscriber(
 		config.IncredibleSquaringRegistryCoordinatorAddr,
 		config.OperatorStateRetrieverAddr,
-		config.EthWsClient,
+		*config.EthWsClient,
 		config.Logger,
 	)
 }
 
-func BuildAvsSubscriber(registryCoordinatorAddr, blsOperatorStateRetrieverAddr gethcommon.Address, ethclient eth.EthClient, logger sdklogging.Logger) (*AvsSubscriber, error) {
+func BuildAvsSubscriber(registryCoordinatorAddr, blsOperatorStateRetrieverAddr gethcommon.Address, ethclient eth.Client, logger sdklogging.Logger) (*AvsSubscriber, error) {
 	avsContractBindings, err := NewAvsManagersBindings(registryCoordinatorAddr, blsOperatorStateRetrieverAddr, ethclient, logger)
 	if err != nil {
 		logger.Errorf("Failed to create contract bindings", "err", err)

@@ -79,3 +79,11 @@ func (z *ZeroLogger) Errorf(template string, args ...interface{}) {
 func (z *ZeroLogger) Fatalf(template string, args ...interface{}) {
 	z.logger.Fatal().Msgf(template, args...)
 }
+
+// With does not apply to zerolog logger
+func (z *ZeroLogger) With(tags ...any) logging.Logger {
+	return &ZeroLogger{
+		// logger: z.logger.Sugar().With(tags...).Desugar(),
+		logger: z.logger,
+	}
+}
