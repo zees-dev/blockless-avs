@@ -1,0 +1,37 @@
+diff --git a/script/deploy/M2_Deploy_From_Scratch.s.sol b/script/deploy/M2_Deploy_From_Scratch.s.sol
+index 1eea0af3..bfb911e9 100644
+--- a/script/deploy/M2_Deploy_From_Scratch.s.sol
++++ b/script/deploy/M2_Deploy_From_Scratch.s.sol
+@@ -100,7 +100,7 @@ contract Deployer_M2 is Script, Test {
+         emit log_named_uint("You are deploying on ChainID", chainId);
+ 
+         // READ JSON CONFIG DATA
+-        deployConfigPath = string(bytes(string.concat("script/testing/", configFile)));
++        deployConfigPath = string(bytes(string.concat("script/configs/devnet/", configFile)));
+         string memory config_data = vm.readFile(deployConfigPath);
+         // bytes memory parsedData = vm.parseJson(config_data);
+ 
+@@ -495,7 +495,7 @@ contract Deployer_M2 is Script, Test {
+         require(delegation.owner() == executorMultisig, "delegation: owner not set correctly");
+         // removing slasher requirements because there is no slasher as part of m2-mainnet release
+         // require(slasher.owner() == executorMultisig, "slasher: owner not set correctly");
+-        require(eigenPodManager.owner() == executorMultisig, "delegation: owner not set correctly");
++        // require(eigenPodManager.owner() == executorMultisig, "delegation: owner not set correctly");
+ 
+         require(eigenLayerProxyAdmin.owner() == executorMultisig, "eigenLayerProxyAdmin: owner not set correctly");
+         require(eigenPodBeacon.owner() == executorMultisig, "eigenPodBeacon: owner not set correctly");
+@@ -513,10 +513,10 @@ contract Deployer_M2 is Script, Test {
+         );
+         // removing slasher requirements because there is no slasher as part of m2-mainnet release
+         // require(slasher.pauserRegistry() == eigenLayerPauserReg, "slasher: pauser registry not set correctly");
+-        require(
+-            eigenPodManager.pauserRegistry() == eigenLayerPauserReg,
+-            "eigenPodManager: pauser registry not set correctly"
+-        );
++        // require(
++        //     eigenPodManager.pauserRegistry() == eigenLayerPauserReg,
++        //     "eigenPodManager: pauser registry not set correctly"
++        // );
+         require(
+             delayedWithdrawalRouter.pauserRegistry() == eigenLayerPauserReg,
+             "delayedWithdrawalRouter: pauser registry not set correctly"

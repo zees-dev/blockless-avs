@@ -99,6 +99,22 @@ See the integration tests [README](tests/anvil/README.md) for more details.
 
 ---
 
+## Setup and update submodule code locally to point to holesky-testnet branches
+
+`testnet-holesky` branch has issues deploying EL contracts to devnet (local anvil).
+The referenced directory and config file does not exist: https://github.com/Layr-Labs/eigenlayer-contracts/blob/testnet-holesky/script/deploy/M2_Deploy_From_Scratch.s.sol#L103
+
+Hence we need to patch the solidity script to point to the correct directory and config file.
+
+```sh
+cd contracts/lib/eigenlayer-middleware/lib/eigenlayer-contracts
+git checkout testnet-holesky
+git apply ../../../../../eigenlayer-contracts-holesky.diff
+cd -
+```
+
+## Setup and run AVS
+
 ```sh
 make clean
 make build-contracts

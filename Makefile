@@ -13,6 +13,9 @@ CHAINID=31337
 # check in contracts/script/output/${CHAINID}/credible_squaring_avs_deployment_output.json
 DEPLOYMENT_FILES_DIR=contracts/script/output/${CHAINID}
 
+HOLESKY_CHAIN_ID=17000
+HOLESKY_DEPLOYMENT_FILES_DIR=contracts/script/output/${HOLESKY_CHAIN_ID}
+
 -----------------------------: ## 
 
 clean:
@@ -55,6 +58,11 @@ start-anvil-chain-with-el-and-avs-deployed:
 bindings:
 	cd contracts && ./generate-go-bindings.sh
 
+## Deploy all contracts on holesky forked local net, start anvil with deployed contracts
+holesky-start-anvil-all-deployed:
+	echo "Starting anvil; deploying AVS contracts..."
+	./anvil/holesky/deploy-avs-save-anvil-state.sh
+
 ___DOCKER___: ## 
 docker-build-and-publish-images: ## builds and publishes operator and aggregator docker images using Ko
 	KO_DOCKER_REPO=ghcr.io/layr-labs/incredible-squaring ko build aggregator/cmd/main.go --preserve-import-paths
@@ -68,6 +76,18 @@ cli-setup-operator: ## registers operator with eigenlayer and avs
 	make cli-update-operator-config
 	echo "Registering operator with eigenlayer"
 	make cli-register-operator-with-eigenlayer
+	echo "Depositing into mocktoken strategy"
+	make cli-deposit-into-mocktoken-strategy
+	echo "Registering operator with avs"
+	make cli-register-operator-with-avs
+	make cli-print-operator-status
+
+holesky-cli-setup-operator: ## registers operator with eigenlayer and avs
+	echo "Updating operator.anvil.yaml config..."
+	make cli-update-operator-config
+	# NOTE: operator ecdsa account already registered with eigenlayer on testnet
+	# echo "Registering operator with eigenlayer"
+	# make cli-register-operator-with-eigenlayer
 	echo "Depositing into mocktoken strategy"
 	make cli-deposit-into-mocktoken-strategy
 	echo "Registering operator with avs"
@@ -102,6 +122,12 @@ ____OFFCHAIN_SOFTWARE___: ##
 start-aggregator: ##
 	go run aggregator/cmd/main.go --config config-files/aggregator.yaml \
 		--credible-squaring-deployment ${DEPLOYMENT_FILES_DIR}/credible_squaring_avs_deployment_output.json \
+		--ecdsa-private-key ${AGGREGATOR_ECDSA_PRIV_KEY} \
+		2>&1 | zap-pretty
+
+holesky-start-aggregator:
+	go run aggregator/cmd/main.go --config config-files/aggregator.yaml \
+		--credible-squaring-deployment ${HOLESKY_DEPLOYMENT_FILES_DIR}/credible_squaring_avs_deployment_output.json \
 		--ecdsa-private-key ${AGGREGATOR_ECDSA_PRIV_KEY} \
 		2>&1 | zap-pretty
 
