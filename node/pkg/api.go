@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"math/big"
 	"net/http"
+	"time"
 
 	avs "github.com/zees-dev/blockless-avs"
 	proto "github.com/zees-dev/blockless-avs/node/proto"
@@ -59,6 +60,40 @@ func RegisterAPIRoutes(cfg *avs.AppConfig, mux *http.ServeMux) {
 
 		// Write the JSON data to the response
 		w.Write(jsonData)
+	})
+
+	// newOracleUpdateChan
+	mux.HandleFunc("POST /api/oracle", func(w http.ResponseWriter, r *http.Request) {
+		// Parse the JSON body
+		var req struct {
+			Symbol string `json:"symbol"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			cfg.Logger.Error("Failed to decode JSON request: %v", err)
+			http.Error(w, "Invalid request body", http.StatusBadRequest)
+			return
+		}
+
+		// Request an oracle update
+		cfg.Operator.RequestOracleUpdate(req.Symbol)
+
+		// Construct the response
+		// Construct the response with full task details
+		response := struct {
+			Symbol    string `json:"symbol"`
+			Timestamp uint32 `json:"timestamp"`
+		}{
+			Symbol: req.Symbol,
+			// current timestmap now
+			Timestamp: uint32(time.Now().Unix()),
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		if err := json.NewEncoder(w).Encode(response); err != nil {
+			cfg.Logger.Error("Failed to encode response: %v", err)
+			http.Error(w, "Error encoding response", http.StatusInternalServerError)
+		}
 	})
 
 	mux.HandleFunc("POST /api/task", func(w http.ResponseWriter, r *http.Request) {

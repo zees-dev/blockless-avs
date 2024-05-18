@@ -99,7 +99,22 @@ See the integration tests [README](tests/anvil/README.md) for more details.
 
 ---
 
-## Setup and update submodule code locally to point to holesky-testnet branches
+## Local setup
+
+```sh
+make clean
+make build-contracts
+make bindings
+make start-anvil-all-deployed
+make start-aggregator
+make cli-setup-operator
+make cli-run-avs
+curl -X POST -d '{ "number": "2" }'  http://127.0.0.1:8080/v1/api/task
+```
+
+## Holesky testnet fork setup
+
+### Setup and update submodule code locally to point to holesky-testnet branches
 
 `testnet-holesky` branch has issues deploying EL contracts to devnet (local anvil).
 The referenced directory and config file does not exist: https://github.com/Layr-Labs/eigenlayer-contracts/blob/testnet-holesky/script/deploy/M2_Deploy_From_Scratch.s.sol#L103
@@ -113,15 +128,17 @@ git apply ../../../../../eigenlayer-contracts-holesky.diff
 cd -
 ```
 
-## Setup and run AVS
 
 ```sh
-make clean
-make build-contracts
-make bindings
-make start-anvil-all-deployed
-make start-aggregator
-make cli-setup-operator
+make holesky-start-anvil-all-deployed
+make holesky-start-aggregator
+make holesky-cli-setup-operator
 make cli-run-avs
 curl -X POST -d '{ "number": "2" }'  http://127.0.0.1:8080/v1/api/task
+```
+
+## Holesky Blockless AVS
+
+```sh
+make blockless-holesky-deploy-avs
 ```

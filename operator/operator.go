@@ -13,6 +13,7 @@ import (
 	"github.com/zees-dev/blockless-avs/aggregator"
 
 	"github.com/zees-dev/blockless-avs/aggregator/types"
+	csavs "github.com/zees-dev/blockless-avs/contracts/bindings/BlocklessAVS"
 	cstaskmanager "github.com/zees-dev/blockless-avs/contracts/bindings/IncredibleSquaringTaskManager"
 	"github.com/zees-dev/blockless-avs/core"
 	"github.com/zees-dev/blockless-avs/core/chainio"
@@ -60,6 +61,8 @@ type Operator struct {
 	operatorAddr     common.Address
 	// receive new tasks in this chan (typically from listening to onchain event)
 	newTaskCreatedChan chan *cstaskmanager.ContractIncredibleSquaringTaskManagerNewTaskCreated
+	// receive oracle update requests (triggered by HTTP requests)
+	newOracleUpdateChan chan *string
 	// ip address of aggregator
 	aggregatorServerIpPortAddr string
 	// rpc client to send signed task responses to aggregator
@@ -219,6 +222,7 @@ func NewOperatorFromConfig(logger logging.Logger, c avstypes.NodeConfig) (*Opera
 		aggregatorServerIpPortAddr:         c.AggregatorServerIpPortAddress,
 		aggregatorRpcClient:                aggregatorRpcClient,
 		newTaskCreatedChan:                 make(chan *cstaskmanager.ContractIncredibleSquaringTaskManagerNewTaskCreated),
+		newOracleUpdateChan:                make(chan *string),
 		credibleSquaringServiceManagerAddr: common.HexToAddress(c.AVSRegistryCoordinatorAddress),
 		operatorId:                         [32]byte{0}, // this is set below
 	}
@@ -268,7 +272,7 @@ func (o *Operator) Start(ctx context.Context) error {
 	}
 
 	// TODO(samlaf): wrap this call with increase in avs-node-spec metric
-	sub := o.avsSubscriber.SubscribeToNewTasks(o.newTaskCreatedChan)
+	// sub := o.avsSubscriber.SubscribeToNewTasks(o.newTaskCreatedChan)
 	for {
 		select {
 		case <-ctx.Done():
@@ -277,12 +281,12 @@ func (o *Operator) Start(ctx context.Context) error {
 			// TODO(samlaf); we should also register the service as unhealthy in the node api
 			// https://eigen.nethermind.io/docs/spec/api/
 			o.logger.Fatal("Error in metrics server", "err", err)
-		case err := <-sub.Err():
-			o.logger.Error("Error in websocket subscription", "err", err)
-			// TODO(samlaf): write unit tests to check if this fixed the issues we were seeing
-			sub.Unsubscribe()
-			// TODO(samlaf): wrap this call with increase in avs-node-spec metric
-			sub = o.avsSubscriber.SubscribeToNewTasks(o.newTaskCreatedChan)
+		// case err := <-sub.Err():
+		// 	o.logger.Error("Error in websocket subscription", "err", err)
+		// 	// TODO(samlaf): write unit tests to check if this fixed the issues we were seeing
+		// 	sub.Unsubscribe()
+		// 	// TODO(samlaf): wrap this call with increase in avs-node-spec metric
+		// 	sub = o.avsSubscriber.SubscribeToNewTasks(o.newTaskCreatedChan)
 		case newTaskCreatedLog := <-o.newTaskCreatedChan:
 			o.metrics.IncNumTasksReceived()
 			taskResponse := o.ProcessNewTaskCreatedLog(newTaskCreatedLog)
@@ -291,6 +295,21 @@ func (o *Operator) Start(ctx context.Context) error {
 				continue
 			}
 			go o.aggregatorRpcClient.SendSignedTaskResponseToAggregator(signedTaskResponse)
+		case symbol := <-o.newOracleUpdateChan:
+			o.metrics.IncNumTasksReceived()
+			price, err := o.ProcessOracleUpdateRequest(*symbol)
+			if err != nil {
+				o.logger.Error("Error processing oracle update request", "err", err)
+				continue
+			}
+			signedOracleResponse, err := o.SignOracleResponse(price)
+			if err != nil {
+				o.logger.Error("Error signing oracle response", "err", err)
+				continue
+			}
+
+			o.logger.Info("Sending signed oracle response to aggregator", "signedOracleResponse", signedOracleResponse)
+			go o.aggregatorRpcClient.SendSignedOracleResponseToAggregator(signedOracleResponse)
 		}
 	}
 }
@@ -311,6 +330,34 @@ func (o *Operator) ProcessNewTaskCreatedLog(newTaskCreatedLog *cstaskmanager.Con
 		NumberSquared:      numberSquared,
 	}
 	return taskResponse
+}
+
+// TODO: incorporate quorum numbers and quorum threshold percentage into the oracle request
+// TODO: incorporate deadline into oracle request
+func (o *Operator) ProcessOracleUpdateRequest(symbol string) (*csavs.IBlocklessAVSPrice, error) {
+	o.logger.Info("Received new oracle update request for symbol", "symbol", symbol)
+	// "taskIndex", newTaskCreatedLog.TaskIndex,
+	// "taskCreatedBlock", newTaskCreatedLog.Task.TaskCreatedBlock,
+	// "quorumNumbers", newTaskCreatedLog.Task.QuorumNumbers,
+	// "QuorumThresholdPercentage", newTaskCreatedLog.Task.QuorumThresholdPercentage,
+
+	// get current block timestamp
+	block, err := o.ethClient.BlockByNumber(context.TODO(), nil)
+	if err != nil {
+		o.logger.Error("Error getting latest block", "err", err)
+		return nil, err
+	}
+	blockTimestamp := block.Time()
+
+	// TODO: get current price from an HTTP endpoint
+	// TODO: convert price to 6DP (USDC/USDT)
+
+	price := 1235
+	return &csavs.IBlocklessAVSPrice{
+		Symbol:    symbol,
+		Price:     big.NewInt(int64(price)),
+		Timestamp: uint32(blockTimestamp),
+	}, nil
 }
 
 // SubmitNewTask sends a new task to the task manager contract, and updates the Task dict struct
@@ -355,4 +402,25 @@ func (o *Operator) SignTaskResponse(taskResponse *cstaskmanager.IIncredibleSquar
 	}
 	o.logger.Debug("Signed task response", "signedTaskResponse", signedTaskResponse)
 	return signedTaskResponse, nil
+}
+
+func (o *Operator) RequestOracleUpdate(symbol string) {
+	o.logger.Info("Operator requesting oracle update", "symbol", symbol)
+	o.newOracleUpdateChan <- &symbol
+}
+
+func (o *Operator) SignOracleResponse(price *csavs.IBlocklessAVSPrice) (*aggregator.SignedOracleResponse, error) {
+	priceHash, err := core.GetPriceDigest(price)
+	if err != nil {
+		o.logger.Error("Error getting price response header hash. skipping task (this is not expected and should be investigated)", "err", err)
+		return nil, err
+	}
+	blsSignature := o.blsKeypair.SignMessage(priceHash)
+	signedOracleResponse := &aggregator.SignedOracleResponse{
+		PriceResponse: *price,
+		BlsSignature:  *blsSignature,
+		OperatorId:    o.operatorId,
+	}
+	o.logger.Debug("Signed oracle response", "signedOracleResponse", signedOracleResponse)
+	return signedOracleResponse, nil
 }

@@ -1,6 +1,7 @@
 package chainio
 
 import (
+	csavs "github.com/zees-dev/blockless-avs/contracts/bindings/BlocklessAVS"
 	cstaskmanager "github.com/zees-dev/blockless-avs/contracts/bindings/IncredibleSquaringTaskManager"
 	"github.com/zees-dev/blockless-avs/core/config"
 
@@ -17,6 +18,8 @@ type AvsSubscriberer interface {
 	SubscribeToNewTasks(newTaskCreatedChan chan *cstaskmanager.ContractIncredibleSquaringTaskManagerNewTaskCreated) event.Subscription
 	SubscribeToTaskResponses(taskResponseLogs chan *cstaskmanager.ContractIncredibleSquaringTaskManagerTaskResponded) event.Subscription
 	ParseTaskResponded(rawLog types.Log) (*cstaskmanager.ContractIncredibleSquaringTaskManagerTaskResponded, error)
+
+	SubscribeToOracleUpdateResponses(oracleUpdateChan chan *csavs.ContractBlocklessAVSOracleUpdate) event.Subscription
 }
 
 // Subscribers use a ws connection instead of http connection like Readers
@@ -72,6 +75,17 @@ func (s *AvsSubscriber) SubscribeToTaskResponses(taskResponseChan chan *cstaskma
 		s.logger.Error("Failed to subscribe to TaskResponded events", "err", err)
 	}
 	s.logger.Infof("Subscribed to TaskResponded events")
+	return sub
+}
+
+func (s *AvsSubscriber) SubscribeToOracleUpdateResponses(oracleUpdateChan chan *csavs.ContractBlocklessAVSOracleUpdate) event.Subscription {
+	sub, err := s.AvsContractBindings.ServiceManager.WatchOracleUpdate(
+		&bind.WatchOpts{}, oracleUpdateChan,
+	)
+	if err != nil {
+		s.logger.Error("Failed to subscribe to ORacleUpdate events", "err", err)
+	}
+	s.logger.Infof("Subscribed to OracleUpdate events")
 	return sub
 }
 

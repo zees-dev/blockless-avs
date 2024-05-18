@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/zees-dev/blockless-avs/aggregator/types"
+	csavs "github.com/zees-dev/blockless-avs/contracts/bindings/BlocklessAVS"
 	cstaskmanager "github.com/zees-dev/blockless-avs/contracts/bindings/IncredibleSquaringTaskManager"
 	"github.com/zees-dev/blockless-avs/core"
 	"github.com/zees-dev/blockless-avs/core/chainio"
@@ -25,7 +26,7 @@ const (
 	// ideally be fetched from the contracts
 	taskChallengeWindowBlock = 100
 	blockTimeSeconds         = 12 * time.Second
-	avsName                  = "incredible-squaring"
+	avsName                  = "blocklessAVS"
 )
 
 // Aggregator sends tasks (numbers to square) onchain, then listens for operator signed TaskResponses.
@@ -64,17 +65,26 @@ const (
 type Aggregator struct {
 	logger           logging.Logger
 	serverIpPortAddr string
+	clients          *clients.Clients
 	avsWriter        chainio.AvsWriterer
 	avsSubscriber    chainio.AvsSubscriberer
 	// aggregation related fields
 	blsAggregationService blsagg.BlsAggregationService
 	// receive new tasks in this chan (typically from listening to onchain event)
-	newTaskCreatedChan   chan *cstaskmanager.ContractIncredibleSquaringTaskManagerNewTaskCreated
-	newTaskRespondedChan chan *cstaskmanager.ContractIncredibleSquaringTaskManagerTaskResponded
-	tasks                map[types.TaskIndex]cstaskmanager.IIncredibleSquaringTaskManagerTask
-	tasksMu              sync.RWMutex
-	taskResponses        map[types.TaskIndex]map[sdktypes.TaskResponseDigest]cstaskmanager.IIncredibleSquaringTaskManagerTaskResponse
-	taskResponsesMu      sync.RWMutex
+	// newTaskCreatedChan   chan *cstaskmanager.ContractIncredibleSquaringTaskManagerNewTaskCreated
+	// newTaskRespondedChan chan *cstaskmanager.ContractIncredibleSquaringTaskManagerTaskResponded
+
+	tasks           map[types.TaskIndex]cstaskmanager.IIncredibleSquaringTaskManagerTask
+	tasksMu         sync.RWMutex
+	taskResponses   map[types.TaskIndex]map[sdktypes.TaskResponseDigest]cstaskmanager.IIncredibleSquaringTaskManagerTaskResponse
+	taskResponsesMu sync.RWMutex
+
+	// oracle price related fields
+	oracleRequestIndex  types.TaskIndex
+	prices              map[types.TaskIndex]csavs.IBlocklessAVSPrice
+	oracleResponses     map[types.TaskIndex]map[sdktypes.TaskResponseDigest]csavs.IBlocklessAVSOracleRequest
+	oracleResponsesMu   sync.RWMutex
+	oracleResponsesChan chan *csavs.ContractBlocklessAVSOracleUpdate
 }
 
 // NewAggregator creates a new Aggregator with the provided config.
@@ -118,13 +128,18 @@ func NewAggregator(c *config.Config) (*Aggregator, error) {
 	return &Aggregator{
 		logger:                c.Logger,
 		serverIpPortAddr:      c.AggregatorServerIpPortAddr,
+		clients:               clients,
 		avsWriter:             avsWriter,
 		avsSubscriber:         avsSubscriber,
 		blsAggregationService: blsAggregationService,
-		newTaskCreatedChan:    make(chan *cstaskmanager.ContractIncredibleSquaringTaskManagerNewTaskCreated),
-		newTaskRespondedChan:  make(chan *cstaskmanager.ContractIncredibleSquaringTaskManagerTaskResponded),
-		tasks:                 make(map[types.TaskIndex]cstaskmanager.IIncredibleSquaringTaskManagerTask),
-		taskResponses:         make(map[types.TaskIndex]map[sdktypes.TaskResponseDigest]cstaskmanager.IIncredibleSquaringTaskManagerTaskResponse),
+		// newTaskCreatedChan:    make(chan *cstaskmanager.ContractIncredibleSquaringTaskManagerNewTaskCreated),
+		// newTaskRespondedChan:  make(chan *cstaskmanager.ContractIncredibleSquaringTaskManagerTaskResponded),
+		tasks:         make(map[types.TaskIndex]cstaskmanager.IIncredibleSquaringTaskManagerTask),
+		taskResponses: make(map[types.TaskIndex]map[sdktypes.TaskResponseDigest]cstaskmanager.IIncredibleSquaringTaskManagerTaskResponse),
+
+		prices:              make(map[types.TaskIndex]csavs.IBlocklessAVSPrice),
+		oracleResponses:     make(map[types.TaskIndex]map[sdktypes.TaskResponseDigest]csavs.IBlocklessAVSOracleRequest),
+		oracleResponsesChan: make(chan *csavs.ContractBlocklessAVSOracleUpdate),
 	}, nil
 }
 
@@ -133,52 +148,103 @@ func (agg *Aggregator) Start(ctx context.Context) error {
 	agg.logger.Infof("Starting aggregator rpc server.")
 	go agg.startServer(ctx)
 
-	subTaskCreated := agg.avsSubscriber.SubscribeToNewTasks(agg.newTaskCreatedChan)
-	subTaskResponded := agg.avsSubscriber.SubscribeToTaskResponses(agg.newTaskRespondedChan)
+	// subTaskCreated := agg.avsSubscriber.SubscribeToNewTasks(agg.newTaskCreatedChan)
+	// subTaskResponded := agg.avsSubscriber.SubscribeToTaskResponses(agg.newTaskRespondedChan)
+
+	subOracleUpdates := agg.avsSubscriber.SubscribeToOracleUpdateResponses(agg.oracleResponsesChan)
 	for {
 		select {
 		case <-ctx.Done():
 			return nil
-		case err := <-subTaskCreated.Err():
-			agg.logger.Error("Error in websocket subscription for NewTaskCreated", "err", err)
-			subTaskCreated.Unsubscribe()
-			subTaskCreated = agg.avsSubscriber.SubscribeToNewTasks(agg.newTaskCreatedChan)
-		case newTaskCreatedLog := <-agg.newTaskCreatedChan:
-			agg.logger.Info("Received new task", "newTaskCreatedLog", newTaskCreatedLog)
-			// agg.metrics.IncNumTasksReceived()
-			if err := agg.processTaskCreatedLog(newTaskCreatedLog); err != nil {
-				agg.logger.Error("Failed to process new task", "err", err)
-			}
-		case err := <-subTaskResponded.Err():
-			agg.logger.Error("Error in websocket subscription for TaskResponded", "err", err)
-			subTaskResponded.Unsubscribe()
-			subTaskResponded = agg.avsSubscriber.SubscribeToTaskResponses(agg.newTaskRespondedChan)
-		case taskRespondedLog := <-agg.newTaskRespondedChan:
-			agg.logger.Info("Received task response successfully!; taskRespondedLog: %#v", taskRespondedLog)
-			// agg.metrics.IncNumTaskResponsesReceived()
+		// case err := <-subTaskCreated.Err():
+		// 	agg.logger.Error("Error in websocket subscription for NewTaskCreated", "err", err)
+		// 	subTaskCreated.Unsubscribe()
+		// 	subTaskCreated = agg.avsSubscriber.SubscribeToNewTasks(agg.newTaskCreatedChan)
+		// case newTaskCreatedLog := <-agg.newTaskCreatedChan:
+		// 	agg.logger.Info("Received new task", "newTaskCreatedLog", newTaskCreatedLog)
+		// 	// agg.metrics.IncNumTasksReceived()
+		// 	if err := agg.processTaskCreatedLog(newTaskCreatedLog); err != nil {
+		// 		agg.logger.Error("Failed to process new task", "err", err)
+		// 	}
+		// case err := <-subTaskResponded.Err():
+		// 	agg.logger.Error("Error in websocket subscription for TaskResponded", "err", err)
+		// 	subTaskResponded.Unsubscribe()
+		// 	subTaskResponded = agg.avsSubscriber.SubscribeToTaskResponses(agg.newTaskRespondedChan)
+		// case taskRespondedLog := <-agg.newTaskRespondedChan:
+		// 	agg.logger.Info("Received task response successfully!; taskRespondedLog: %#v", taskRespondedLog)
+		// 	// agg.metrics.IncNumTaskResponsesReceived()
 		case blsAggServiceResp := <-agg.blsAggregationService.GetResponseChannel():
 			agg.logger.Info("Received response from blsAggregationService", "blsAggServiceResp", blsAggServiceResp)
-			agg.sendAggregatedResponseToContract(blsAggServiceResp)
+			agg.sendAggregatedOracleResponseToContract(blsAggServiceResp)
+		case err := <-subOracleUpdates.Err():
+			agg.logger.Error("Error in websocket subscription for OracleUpdate", "err", err)
+			subOracleUpdates.Unsubscribe()
+			subOracleUpdates = agg.avsSubscriber.SubscribeToOracleUpdateResponses(agg.oracleResponsesChan)
+		case oracleUpd := <-agg.oracleResponsesChan:
+			agg.logger.Info("Received oracle update successfully!; oracleUpd: %#v", oracleUpd)
+			// TODO: update metrics
+			// agg.metrics.IncNumOracleUpdatesReceived()
 		}
 	}
 }
 
-func (agg *Aggregator) sendAggregatedResponseToContract(blsAggServiceResp blsagg.BlsAggregationServiceResponse) {
+// func (agg *Aggregator) sendAggregatedResponseToContract(blsAggServiceResp blsagg.BlsAggregationServiceResponse) {
+// 	// TODO: check if blsAggServiceResp contains an err
+// 	if blsAggServiceResp.Err != nil {
+// 		agg.logger.Error("BlsAggregationServiceResponse contains an error", "err", blsAggServiceResp.Err)
+// 		// panicing to help with debugging (fail fast), but we shouldn't panic if we run this in production
+// 		panic(blsAggServiceResp.Err)
+// 	}
+// 	nonSignerPubkeys := []cstaskmanager.BN254G1Point{}
+// 	for _, nonSignerPubkey := range blsAggServiceResp.NonSignersPubkeysG1 {
+// 		nonSignerPubkeys = append(nonSignerPubkeys, core.ConvertToBN254G1Point(nonSignerPubkey))
+// 	}
+// 	quorumApks := []cstaskmanager.BN254G1Point{}
+// 	for _, quorumApk := range blsAggServiceResp.QuorumApksG1 {
+// 		quorumApks = append(quorumApks, core.ConvertToBN254G1Point(quorumApk))
+// 	}
+// 	nonSignerStakesAndSignature := cstaskmanager.IBLSSignatureCheckerNonSignerStakesAndSignature{
+// 		NonSignerPubkeys:             nonSignerPubkeys,
+// 		QuorumApks:                   quorumApks,
+// 		ApkG2:                        core.ConvertToBN254G2Point(blsAggServiceResp.SignersApkG2),
+// 		Sigma:                        core.ConvertToBN254G1Point(blsAggServiceResp.SignersAggSigG1.G1Point),
+// 		NonSignerQuorumBitmapIndices: blsAggServiceResp.NonSignerQuorumBitmapIndices,
+// 		QuorumApkIndices:             blsAggServiceResp.QuorumApkIndices,
+// 		TotalStakeIndices:            blsAggServiceResp.TotalStakeIndices,
+// 		NonSignerStakeIndices:        blsAggServiceResp.NonSignerStakeIndices,
+// 	}
+
+// 	agg.logger.Info("Threshold reached. Sending aggregated response onchain.",
+// 		"taskIndex", blsAggServiceResp.TaskIndex,
+// 	)
+// 	agg.tasksMu.RLock()
+// 	task := agg.tasks[blsAggServiceResp.TaskIndex]
+// 	agg.tasksMu.RUnlock()
+// 	agg.taskResponsesMu.RLock()
+// 	taskResponse := agg.taskResponses[blsAggServiceResp.TaskIndex][blsAggServiceResp.TaskResponseDigest]
+// 	agg.taskResponsesMu.RUnlock()
+// 	_, err := agg.avsWriter.SendAggregatedResponse(context.Background(), task, taskResponse, nonSignerStakesAndSignature)
+// 	if err != nil {
+// 		agg.logger.Error("Aggregator failed to respond to task", "err", err)
+// 	}
+// }
+
+func (agg *Aggregator) sendAggregatedOracleResponseToContract(blsAggServiceResp blsagg.BlsAggregationServiceResponse) {
 	// TODO: check if blsAggServiceResp contains an err
 	if blsAggServiceResp.Err != nil {
 		agg.logger.Error("BlsAggregationServiceResponse contains an error", "err", blsAggServiceResp.Err)
 		// panicing to help with debugging (fail fast), but we shouldn't panic if we run this in production
 		panic(blsAggServiceResp.Err)
 	}
-	nonSignerPubkeys := []cstaskmanager.BN254G1Point{}
+	nonSignerPubkeys := []csavs.BN254G1Point{}
 	for _, nonSignerPubkey := range blsAggServiceResp.NonSignersPubkeysG1 {
 		nonSignerPubkeys = append(nonSignerPubkeys, core.ConvertToBN254G1Point(nonSignerPubkey))
 	}
-	quorumApks := []cstaskmanager.BN254G1Point{}
+	quorumApks := []csavs.BN254G1Point{}
 	for _, quorumApk := range blsAggServiceResp.QuorumApksG1 {
 		quorumApks = append(quorumApks, core.ConvertToBN254G1Point(quorumApk))
 	}
-	nonSignerStakesAndSignature := cstaskmanager.IBLSSignatureCheckerNonSignerStakesAndSignature{
+	nonSignerStakesAndSignature := csavs.IBLSSignatureCheckerNonSignerStakesAndSignature{
 		NonSignerPubkeys:             nonSignerPubkeys,
 		QuorumApks:                   quorumApks,
 		ApkG2:                        core.ConvertToBN254G2Point(blsAggServiceResp.SignersApkG2),
@@ -192,13 +258,11 @@ func (agg *Aggregator) sendAggregatedResponseToContract(blsAggServiceResp blsagg
 	agg.logger.Info("Threshold reached. Sending aggregated response onchain.",
 		"taskIndex", blsAggServiceResp.TaskIndex,
 	)
-	agg.tasksMu.RLock()
-	task := agg.tasks[blsAggServiceResp.TaskIndex]
-	agg.tasksMu.RUnlock()
-	agg.taskResponsesMu.RLock()
-	taskResponse := agg.taskResponses[blsAggServiceResp.TaskIndex][blsAggServiceResp.TaskResponseDigest]
-	agg.taskResponsesMu.RUnlock()
-	_, err := agg.avsWriter.SendAggregatedResponse(context.Background(), task, taskResponse, nonSignerStakesAndSignature)
+	agg.oracleResponsesMu.Lock()
+	price := agg.prices[blsAggServiceResp.TaskIndex]
+	oracleResponse := agg.oracleResponses[blsAggServiceResp.TaskIndex][blsAggServiceResp.TaskResponseDigest]
+	agg.oracleResponsesMu.Unlock()
+	_, err := agg.avsWriter.SendAggregatedOracleResponse(context.Background(), oracleResponse, price, nonSignerStakesAndSignature)
 	if err != nil {
 		agg.logger.Error("Aggregator failed to respond to task", "err", err)
 	}

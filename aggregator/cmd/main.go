@@ -25,19 +25,18 @@ func main() {
 	app := cli.NewApp()
 	app.Flags = config.Flags
 	app.Version = fmt.Sprintf("%s-%s-%s", Version, GitCommit, GitDate)
-	app.Name = "credible-squaring-aggregator"
-	app.Usage = "Credible Squaring Aggregator"
-	app.Description = "Service that sends number to be credibly squared by operator nodes."
+	app.Name = "blockless-avs-aggregator"
+	app.Usage = "Blockless AVS Aggregator"
+	app.Description = "Service that aggregates signatures and submits result on-chain."
 
 	app.Action = aggregatorMain
-	err := app.Run(os.Args)
-	if err != nil {
+
+	if err := app.Run(os.Args); err != nil {
 		log.Fatalln("Application failed.", "Message:", err)
 	}
 }
 
 func aggregatorMain(ctx *cli.Context) error {
-
 	log.Println("Initializing Aggregator")
 	config, err := config.NewConfig(ctx)
 	if err != nil {
@@ -54,11 +53,9 @@ func aggregatorMain(ctx *cli.Context) error {
 		return err
 	}
 
-	err = agg.Start(context.Background())
-	if err != nil {
+	if err = agg.Start(context.Background()); err != nil {
 		return err
 	}
 
 	return nil
-
 }

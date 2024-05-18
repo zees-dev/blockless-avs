@@ -4,6 +4,7 @@ import (
 	"context"
 	"math/big"
 
+	csavs "github.com/zees-dev/blockless-avs/contracts/bindings/BlocklessAVS"
 	cstaskmanager "github.com/zees-dev/blockless-avs/contracts/bindings/IncredibleSquaringTaskManager"
 	"github.com/zees-dev/blockless-avs/core/config"
 
@@ -37,6 +38,11 @@ type AvsWriterer interface {
 		task cstaskmanager.IIncredibleSquaringTaskManagerTask,
 		taskResponse cstaskmanager.IIncredibleSquaringTaskManagerTaskResponse,
 		nonSignerStakesAndSignature cstaskmanager.IBLSSignatureCheckerNonSignerStakesAndSignature,
+	) (*types.Receipt, error)
+	SendAggregatedOracleResponse(ctx context.Context,
+		oracleResponse csavs.IBlocklessAVSOracleRequest,
+		price csavs.IBlocklessAVSPrice,
+		nonSignerStakesAndSignature csavs.IBLSSignatureCheckerNonSignerStakesAndSignature,
 	) (*types.Receipt, error)
 }
 
@@ -118,6 +124,30 @@ func (w *AvsWriter) SendAggregatedResponse(
 	receipt, err := w.TxMgr.Send(ctx, tx)
 	if err != nil {
 		w.logger.Errorf("Error submitting CreateNewTask tx")
+		return nil, err
+	}
+	return receipt, nil
+}
+
+func (w *AvsWriter) SendAggregatedOracleResponse(
+	ctx context.Context,
+	oracleResponse csavs.IBlocklessAVSOracleRequest,
+	price csavs.IBlocklessAVSPrice,
+	nonSignerStakesAndSignature csavs.IBLSSignatureCheckerNonSignerStakesAndSignature,
+) (*types.Receipt, error) {
+	txOpts, err := w.TxMgr.GetNoSendTxOpts()
+	if err != nil {
+		w.logger.Errorf("Error getting tx opts")
+		return nil, err
+	}
+	tx, err := w.AvsContractBindings.ServiceManager.ContractBlocklessAVSTransactor.UpdateOraclePrice(txOpts, oracleResponse, price, nonSignerStakesAndSignature)
+	if err != nil {
+		w.logger.Error("Error submitting SendAggregatedOracleResponse tx while calling updateOraclePrice", "err", err)
+		return nil, err
+	}
+	receipt, err := w.TxMgr.Send(ctx, tx)
+	if err != nil {
+		w.logger.Errorf("Error submitting UpdateOraclePrice tx")
 		return nil, err
 	}
 	return receipt, nil

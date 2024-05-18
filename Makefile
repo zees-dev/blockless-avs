@@ -127,7 +127,7 @@ start-aggregator: ##
 
 holesky-start-aggregator:
 	go run aggregator/cmd/main.go --config config-files/aggregator.yaml \
-		--credible-squaring-deployment ${HOLESKY_DEPLOYMENT_FILES_DIR}/credible_squaring_avs_deployment_output.json \
+		--credible-squaring-deployment ${HOLESKY_DEPLOYMENT_FILES_DIR}/blockless_avs_deployment_output.json \
 		--ecdsa-private-key ${AGGREGATOR_ECDSA_PRIV_KEY} \
 		2>&1 | zap-pretty
 
@@ -144,3 +144,9 @@ start-challenger: ##
 run-plugin: ## 
 	go run plugin/cmd/main.go --config config-files/operator.anvil.yaml
 -----------------------------: ## 
+
+___BLOCKLESS_AVS_HOLESKY___: ## 
+
+blockless-holesky-deploy-avs:
+	# NOTE: Deploy actual contracts to holesky
+	./anvil/holesky/deploy-avs-holesky.sh
