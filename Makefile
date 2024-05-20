@@ -121,13 +121,13 @@ cli-run-avs:
 ____OFFCHAIN_SOFTWARE___: ## 
 start-aggregator: ##
 	go run aggregator/cmd/main.go --config config-files/aggregator.yaml \
-		--credible-squaring-deployment ${DEPLOYMENT_FILES_DIR}/credible_squaring_avs_deployment_output.json \
+		--blockless-avs-deployment ${DEPLOYMENT_FILES_DIR}/credible_squaring_avs_deployment_output.json \
 		--ecdsa-private-key ${AGGREGATOR_ECDSA_PRIV_KEY} \
 		2>&1 | zap-pretty
 
 holesky-start-aggregator:
 	go run aggregator/cmd/main.go --config config-files/aggregator.yaml \
-		--credible-squaring-deployment ${HOLESKY_DEPLOYMENT_FILES_DIR}/blockless_avs_deployment_output.json \
+		--blockless-avs-deployment ${HOLESKY_DEPLOYMENT_FILES_DIR}/blockless_avs_deployment_output.json \
 		--ecdsa-private-key ${AGGREGATOR_ECDSA_PRIV_KEY} \
 		2>&1 | zap-pretty
 
@@ -137,7 +137,7 @@ start-operator: ##
 
 start-challenger: ## 
 	go run challenger/cmd/main.go --config config-files/challenger.yaml \
-		--credible-squaring-deployment ${DEPLOYMENT_FILES_DIR}/credible_squaring_avs_deployment_output.json \
+		--blockless-avs-deployment ${DEPLOYMENT_FILES_DIR}/credible_squaring_avs_deployment_output.json \
 		--ecdsa-private-key ${CHALLENGER_ECDSA_PRIV_KEY} \
 		2>&1 | zap-pretty
 

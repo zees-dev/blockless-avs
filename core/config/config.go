@@ -21,7 +21,7 @@ import (
 	sdkutils "github.com/Layr-Labs/eigensdk-go/utils"
 )
 
-// Config contains all of the configuration information for a credible squaring aggregators and challengers.
+// Config contains all of the configuration information for a blockless avs aggregators and challengers.
 // Operators use a separate config. (see config-files/operator.anvil.yaml)
 type Config struct {
 	EcdsaPrivateKey           *ecdsa.PrivateKey
@@ -30,14 +30,14 @@ type Config struct {
 	EigenMetricsIpPortAddress string
 	// we need the url for the eigensdk currently... eventually standardize api so as to
 	// only take an ethclient or an rpcUrl (and build the ethclient at each constructor site)
-	EthHttpRpcUrl                             string
-	EthWsRpcUrl                               string
-	EthHttpClient                             *eth.Client
-	EthWsClient                               *eth.Client
-	OperatorStateRetrieverAddr                common.Address
-	IncredibleSquaringRegistryCoordinatorAddr common.Address
-	AggregatorServerIpPortAddr                string
-	RegisterOperatorOnStartup                 bool
+	EthHttpRpcUrl                       string
+	EthWsRpcUrl                         string
+	EthHttpClient                       *eth.Client
+	EthWsClient                         *eth.Client
+	OperatorStateRetrieverAddr          common.Address
+	BlocklessAVSRegistryCoordinatorAddr common.Address
+	AggregatorServerIpPortAddr          string
+	RegisterOperatorOnStartup           bool
 	// json:"-" skips this field when marshaling (only used for logging to stdout), since SignerFn doesnt implement marshalJson
 	SignerFn          signerv2.SignerFn `json:"-"`
 	TxMgr             txmgr.TxManager
@@ -53,11 +53,11 @@ type ConfigRaw struct {
 	RegisterOperatorOnStartup  bool                `yaml:"register_operator_on_startup"`
 }
 
-// These are read from CredibleSquaringDeploymentFileFlag
-type IncredibleSquaringDeploymentRaw struct {
-	Addresses IncredibleSquaringContractsRaw `json:"addresses"`
+// These are read from BlocklessAVSDeploymentFileFlag
+type BlocklessAVSDeploymentRaw struct {
+	Addresses BlocklessAVSContractsRaw `json:"addresses"`
 }
-type IncredibleSquaringContractsRaw struct {
+type BlocklessAVSContractsRaw struct {
 	RegistryCoordinatorAddr    string `json:"registryCoordinator"`
 	OperatorStateRetrieverAddr string `json:"operatorStateRetriever"`
 }
@@ -73,12 +73,12 @@ func NewConfig(ctx *cli.Context) (*Config, error) {
 		sdkutils.ReadYamlConfig(configFilePath, &configRaw)
 	}
 
-	var credibleSquaringDeploymentRaw IncredibleSquaringDeploymentRaw
-	credibleSquaringDeploymentFilePath := ctx.String(CredibleSquaringDeploymentFileFlag.Name)
-	if _, err := os.Stat(credibleSquaringDeploymentFilePath); errors.Is(err, os.ErrNotExist) {
-		panic("Path " + credibleSquaringDeploymentFilePath + " does not exist")
+	var blocklessAVSDeploymentRaw BlocklessAVSDeploymentRaw
+	blocklessAVSDeploymentFilePath := ctx.String(BlocklessAVSDeploymentFileFlag.Name)
+	if _, err := os.Stat(blocklessAVSDeploymentFilePath); errors.Is(err, os.ErrNotExist) {
+		panic("Path " + blocklessAVSDeploymentFilePath + " does not exist")
 	}
-	sdkutils.ReadJsonConfig(credibleSquaringDeploymentFilePath, &credibleSquaringDeploymentRaw)
+	sdkutils.ReadJsonConfig(blocklessAVSDeploymentFilePath, &blocklessAVSDeploymentRaw)
 
 	logger := logging.NewZeroLogger(logging.LogLevel(configRaw.Environment))
 
@@ -127,19 +127,19 @@ func NewConfig(ctx *cli.Context) (*Config, error) {
 	txMgr := txmgr.NewSimpleTxManager(skWallet, ethRpcClient, logger, aggregatorAddr)
 
 	config := &Config{
-		EcdsaPrivateKey:            ecdsaPrivateKey,
-		Logger:                     logger,
-		EthWsRpcUrl:                configRaw.EthWsUrl,
-		EthHttpRpcUrl:              configRaw.EthRpcUrl,
-		EthHttpClient:              &ethRpcClient,
-		EthWsClient:                &ethWsClient,
-		OperatorStateRetrieverAddr: common.HexToAddress(credibleSquaringDeploymentRaw.Addresses.OperatorStateRetrieverAddr),
-		IncredibleSquaringRegistryCoordinatorAddr: common.HexToAddress(credibleSquaringDeploymentRaw.Addresses.RegistryCoordinatorAddr),
-		AggregatorServerIpPortAddr:                configRaw.AggregatorServerIpPortAddr,
-		RegisterOperatorOnStartup:                 configRaw.RegisterOperatorOnStartup,
-		SignerFn:                                  signerV2,
-		TxMgr:                                     txMgr,
-		AggregatorAddress:                         aggregatorAddr,
+		EcdsaPrivateKey:                     ecdsaPrivateKey,
+		Logger:                              logger,
+		EthWsRpcUrl:                         configRaw.EthWsUrl,
+		EthHttpRpcUrl:                       configRaw.EthRpcUrl,
+		EthHttpClient:                       &ethRpcClient,
+		EthWsClient:                         &ethWsClient,
+		OperatorStateRetrieverAddr:          common.HexToAddress(blocklessAVSDeploymentRaw.Addresses.OperatorStateRetrieverAddr),
+		BlocklessAVSRegistryCoordinatorAddr: common.HexToAddress(blocklessAVSDeploymentRaw.Addresses.RegistryCoordinatorAddr),
+		AggregatorServerIpPortAddr:          configRaw.AggregatorServerIpPortAddr,
+		RegisterOperatorOnStartup:           configRaw.RegisterOperatorOnStartup,
+		SignerFn:                            signerV2,
+		TxMgr:                               txMgr,
+		AggregatorAddress:                   aggregatorAddr,
 	}
 	config.validate()
 	return config, nil
@@ -150,8 +150,8 @@ func (c *Config) validate() {
 	if c.OperatorStateRetrieverAddr == common.HexToAddress("") {
 		panic("Config: BLSOperatorStateRetrieverAddr is required")
 	}
-	if c.IncredibleSquaringRegistryCoordinatorAddr == common.HexToAddress("") {
-		panic("Config: IncredibleSquaringRegistryCoordinatorAddr is required")
+	if c.BlocklessAVSRegistryCoordinatorAddr == common.HexToAddress("") {
+		panic("Config: BlocklessAVSRegistryCoordinatorAddr is required")
 	}
 }
 
@@ -178,10 +178,10 @@ var (
 		Required:   true,
 		HasBeenSet: true,
 	}
-	CredibleSquaringDeploymentFileFlag = &cli.StringFlag{
-		Name:     "credible-squaring-deployment",
+	BlocklessAVSDeploymentFileFlag = &cli.StringFlag{
+		Name:     "blockless-avs-deployment",
 		Required: true,
-		Usage:    "Load credible squaring contract addresses from `FILE`",
+		Usage:    "Load blockless avs contract addresses from `FILE`",
 	}
 	EcdsaPrivateKeyFlag = &cli.StringFlag{
 		Name:     "ecdsa-private-key",
@@ -194,7 +194,7 @@ var (
 
 var requiredFlags = []cli.Flag{
 	ConfigFileFlag,
-	CredibleSquaringDeploymentFileFlag,
+	BlocklessAVSDeploymentFileFlag,
 	EcdsaPrivateKeyFlag,
 }
 

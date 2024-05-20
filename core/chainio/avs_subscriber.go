@@ -2,12 +2,10 @@ package chainio
 
 import (
 	csavs "github.com/zees-dev/blockless-avs/contracts/bindings/BlocklessAVS"
-	cstaskmanager "github.com/zees-dev/blockless-avs/contracts/bindings/IncredibleSquaringTaskManager"
 	"github.com/zees-dev/blockless-avs/core/config"
 
 	"github.com/ethereum/go-ethereum/accounts/abi/bind"
 	gethcommon "github.com/ethereum/go-ethereum/common"
-	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/event"
 
 	"github.com/Layr-Labs/eigensdk-go/chainio/clients/eth"
@@ -15,10 +13,6 @@ import (
 )
 
 type AvsSubscriberer interface {
-	SubscribeToNewTasks(newTaskCreatedChan chan *cstaskmanager.ContractIncredibleSquaringTaskManagerNewTaskCreated) event.Subscription
-	SubscribeToTaskResponses(taskResponseLogs chan *cstaskmanager.ContractIncredibleSquaringTaskManagerTaskResponded) event.Subscription
-	ParseTaskResponded(rawLog types.Log) (*cstaskmanager.ContractIncredibleSquaringTaskManagerTaskResponded, error)
-
 	SubscribeToOracleUpdateResponses(oracleUpdateChan chan *csavs.ContractBlocklessAVSOracleUpdate) event.Subscription
 }
 
@@ -33,7 +27,7 @@ type AvsSubscriber struct {
 
 func BuildAvsSubscriberFromConfig(config *config.Config) (*AvsSubscriber, error) {
 	return BuildAvsSubscriber(
-		config.IncredibleSquaringRegistryCoordinatorAddr,
+		config.BlocklessAVSRegistryCoordinatorAddr,
 		config.OperatorStateRetrieverAddr,
 		*config.EthWsClient,
 		config.Logger,
@@ -56,28 +50,6 @@ func NewAvsSubscriber(avsContractBindings *AvsManagersBindings, logger sdkloggin
 	}
 }
 
-func (s *AvsSubscriber) SubscribeToNewTasks(newTaskCreatedChan chan *cstaskmanager.ContractIncredibleSquaringTaskManagerNewTaskCreated) event.Subscription {
-	sub, err := s.AvsContractBindings.TaskManager.WatchNewTaskCreated(
-		&bind.WatchOpts{}, newTaskCreatedChan, nil,
-	)
-	if err != nil {
-		s.logger.Error("Failed to subscribe to new TaskManager tasks", "err", err)
-	}
-	s.logger.Infof("Subscribed to new TaskManager tasks")
-	return sub
-}
-
-func (s *AvsSubscriber) SubscribeToTaskResponses(taskResponseChan chan *cstaskmanager.ContractIncredibleSquaringTaskManagerTaskResponded) event.Subscription {
-	sub, err := s.AvsContractBindings.TaskManager.WatchTaskResponded(
-		&bind.WatchOpts{}, taskResponseChan,
-	)
-	if err != nil {
-		s.logger.Error("Failed to subscribe to TaskResponded events", "err", err)
-	}
-	s.logger.Infof("Subscribed to TaskResponded events")
-	return sub
-}
-
 func (s *AvsSubscriber) SubscribeToOracleUpdateResponses(oracleUpdateChan chan *csavs.ContractBlocklessAVSOracleUpdate) event.Subscription {
 	sub, err := s.AvsContractBindings.ServiceManager.WatchOracleUpdate(
 		&bind.WatchOpts{}, oracleUpdateChan,
@@ -87,8 +59,4 @@ func (s *AvsSubscriber) SubscribeToOracleUpdateResponses(oracleUpdateChan chan *
 	}
 	s.logger.Infof("Subscribed to OracleUpdate events")
 	return sub
-}
-
-func (s *AvsSubscriber) ParseTaskResponded(rawLog types.Log) (*cstaskmanager.ContractIncredibleSquaringTaskManagerTaskResponded, error) {
-	return s.AvsContractBindings.TaskManager.ContractIncredibleSquaringTaskManagerFilterer.ParseTaskResponded(rawLog)
 }

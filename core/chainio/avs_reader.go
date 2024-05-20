@@ -3,8 +3,8 @@ package chainio
 import (
 	"context"
 
+	csavs "github.com/zees-dev/blockless-avs/contracts/bindings/BlocklessAVS"
 	erc20mock "github.com/zees-dev/blockless-avs/contracts/bindings/ERC20Mock"
-	cstaskmanager "github.com/zees-dev/blockless-avs/contracts/bindings/IncredibleSquaringTaskManager"
 	"github.com/zees-dev/blockless-avs/core/config"
 
 	"github.com/ethereum/go-ethereum/accounts/abi/bind"
@@ -19,8 +19,8 @@ type AvsReaderer interface {
 	sdkavsregistry.AvsRegistryReader
 
 	CheckSignatures(
-		ctx context.Context, msgHash [32]byte, quorumNumbers []byte, referenceBlockNumber uint32, nonSignerStakesAndSignature cstaskmanager.IBLSSignatureCheckerNonSignerStakesAndSignature,
-	) (cstaskmanager.IBLSSignatureCheckerQuorumStakeTotals, error)
+		ctx context.Context, msgHash [32]byte, quorumNumbers []byte, referenceBlockNumber uint32, nonSignerStakesAndSignature csavs.IBLSSignatureCheckerNonSignerStakesAndSignature,
+	) (csavs.IBLSSignatureCheckerQuorumStakeTotals, error)
 	GetErc20Mock(ctx context.Context, tokenAddr gethcommon.Address) (*erc20mock.ContractERC20Mock, error)
 }
 
@@ -33,7 +33,7 @@ type AvsReader struct {
 var _ AvsReaderer = (*AvsReader)(nil)
 
 func BuildAvsReaderFromConfig(c *config.Config) (*AvsReader, error) {
-	return BuildAvsReader(c.IncredibleSquaringRegistryCoordinatorAddr, c.OperatorStateRetrieverAddr, *c.EthHttpClient, c.Logger)
+	return BuildAvsReader(c.BlocklessAVSRegistryCoordinatorAddr, c.OperatorStateRetrieverAddr, *c.EthHttpClient, c.Logger)
 }
 func BuildAvsReader(registryCoordinatorAddr, operatorStateRetrieverAddr gethcommon.Address, ethHttpClient eth.Client, logger logging.Logger) (*AvsReader, error) {
 	avsManagersBindings, err := NewAvsManagersBindings(registryCoordinatorAddr, operatorStateRetrieverAddr, ethHttpClient, logger)
@@ -55,13 +55,13 @@ func NewAvsReader(avsRegistryReader sdkavsregistry.AvsRegistryReader, avsService
 }
 
 func (r *AvsReader) CheckSignatures(
-	ctx context.Context, msgHash [32]byte, quorumNumbers []byte, referenceBlockNumber uint32, nonSignerStakesAndSignature cstaskmanager.IBLSSignatureCheckerNonSignerStakesAndSignature,
-) (cstaskmanager.IBLSSignatureCheckerQuorumStakeTotals, error) {
-	stakeTotalsPerQuorum, _, err := r.AvsServiceBindings.TaskManager.CheckSignatures(
+	ctx context.Context, msgHash [32]byte, quorumNumbers []byte, referenceBlockNumber uint32, nonSignerStakesAndSignature csavs.IBLSSignatureCheckerNonSignerStakesAndSignature,
+) (csavs.IBLSSignatureCheckerQuorumStakeTotals, error) {
+	stakeTotalsPerQuorum, _, err := r.AvsServiceBindings.ServiceManager.CheckSignatures(
 		&bind.CallOpts{}, msgHash, quorumNumbers, referenceBlockNumber, nonSignerStakesAndSignature,
 	)
 	if err != nil {
-		return cstaskmanager.IBLSSignatureCheckerQuorumStakeTotals{}, err
+		return csavs.IBLSSignatureCheckerQuorumStakeTotals{}, err
 	}
 	return stakeTotalsPerQuorum, nil
 }

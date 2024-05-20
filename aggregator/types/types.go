@@ -14,7 +14,7 @@ const QUORUM_THRESHOLD_DENOMINATOR = sdktypes.QuorumThresholdPercentage(100)
 
 const QUERY_FILTER_FROM_BLOCK = uint64(1)
 
-// we only use a single quorum (quorum 0) for incredible squaring
+// we only use a single quorum (quorum 0) for blockless-avs
 var QUORUM_NUMBERS = sdktypes.QuorumNums{0}
 
 type BlockNumber = uint32

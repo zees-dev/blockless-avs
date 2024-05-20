@@ -12,9 +12,7 @@ import (
 
 	"github.com/zees-dev/blockless-avs/aggregator"
 
-	"github.com/zees-dev/blockless-avs/aggregator/types"
 	csavs "github.com/zees-dev/blockless-avs/contracts/bindings/BlocklessAVS"
-	cstaskmanager "github.com/zees-dev/blockless-avs/contracts/bindings/IncredibleSquaringTaskManager"
 	"github.com/zees-dev/blockless-avs/core"
 	"github.com/zees-dev/blockless-avs/core/chainio"
 	"github.com/zees-dev/blockless-avs/metrics"
@@ -36,7 +34,7 @@ import (
 	sdktypes "github.com/Layr-Labs/eigensdk-go/types"
 )
 
-const AVS_NAME = "incredible-squaring"
+const AVS_NAME = "blockless-avs"
 const SEM_VER = "0.0.1"
 
 type Operator struct {
@@ -59,16 +57,12 @@ type Operator struct {
 	blsKeypair       *bls.KeyPair
 	operatorId       sdktypes.OperatorId
 	operatorAddr     common.Address
-	// receive new tasks in this chan (typically from listening to onchain event)
-	newTaskCreatedChan chan *cstaskmanager.ContractIncredibleSquaringTaskManagerNewTaskCreated
 	// receive oracle update requests (triggered by HTTP requests)
 	newOracleUpdateChan chan *string
 	// ip address of aggregator
 	aggregatorServerIpPortAddr string
 	// rpc client to send signed task responses to aggregator
 	aggregatorRpcClient AggregatorRpcClienter
-	// needed when opting in to avs (allow this service manager contract to slash operator)
-	credibleSquaringServiceManagerAddr common.Address
 }
 
 // TODO(samlaf): config is a mess right now, since the chainio client constructors
@@ -206,25 +200,23 @@ func NewOperatorFromConfig(logger logging.Logger, c avstypes.NodeConfig) (*Opera
 	}
 
 	operator := &Operator{
-		config:                             c,
-		logger:                             logger,
-		metricsReg:                         reg,
-		metrics:                            avsAndEigenMetrics,
-		nodeApi:                            nodeApi,
-		ethClient:                          ethRpcClient,
-		avsWriter:                          avsWriter,
-		avsReader:                          avsReader,
-		avsSubscriber:                      avsSubscriber,
-		eigenlayerReader:                   sdkClients.ElChainReader,
-		eigenlayerWriter:                   sdkClients.ElChainWriter,
-		blsKeypair:                         blsKeyPair,
-		operatorAddr:                       common.HexToAddress(c.OperatorAddress),
-		aggregatorServerIpPortAddr:         c.AggregatorServerIpPortAddress,
-		aggregatorRpcClient:                aggregatorRpcClient,
-		newTaskCreatedChan:                 make(chan *cstaskmanager.ContractIncredibleSquaringTaskManagerNewTaskCreated),
-		newOracleUpdateChan:                make(chan *string),
-		credibleSquaringServiceManagerAddr: common.HexToAddress(c.AVSRegistryCoordinatorAddress),
-		operatorId:                         [32]byte{0}, // this is set below
+		config:                     c,
+		logger:                     logger,
+		metricsReg:                 reg,
+		metrics:                    avsAndEigenMetrics,
+		nodeApi:                    nodeApi,
+		ethClient:                  ethRpcClient,
+		avsWriter:                  avsWriter,
+		avsReader:                  avsReader,
+		avsSubscriber:              avsSubscriber,
+		eigenlayerReader:           sdkClients.ElChainReader,
+		eigenlayerWriter:           sdkClients.ElChainWriter,
+		blsKeypair:                 blsKeyPair,
+		operatorAddr:               common.HexToAddress(c.OperatorAddress),
+		aggregatorServerIpPortAddr: c.AggregatorServerIpPortAddress,
+		aggregatorRpcClient:        aggregatorRpcClient,
+		newOracleUpdateChan:        make(chan *string),
+		operatorId:                 [32]byte{0}, // this is set below
 	}
 
 	if c.RegisterOperatorOnStartup {
@@ -281,20 +273,6 @@ func (o *Operator) Start(ctx context.Context) error {
 			// TODO(samlaf); we should also register the service as unhealthy in the node api
 			// https://eigen.nethermind.io/docs/spec/api/
 			o.logger.Fatal("Error in metrics server", "err", err)
-		// case err := <-sub.Err():
-		// 	o.logger.Error("Error in websocket subscription", "err", err)
-		// 	// TODO(samlaf): write unit tests to check if this fixed the issues we were seeing
-		// 	sub.Unsubscribe()
-		// 	// TODO(samlaf): wrap this call with increase in avs-node-spec metric
-		// 	sub = o.avsSubscriber.SubscribeToNewTasks(o.newTaskCreatedChan)
-		case newTaskCreatedLog := <-o.newTaskCreatedChan:
-			o.metrics.IncNumTasksReceived()
-			taskResponse := o.ProcessNewTaskCreatedLog(newTaskCreatedLog)
-			signedTaskResponse, err := o.SignTaskResponse(taskResponse)
-			if err != nil {
-				continue
-			}
-			go o.aggregatorRpcClient.SendSignedTaskResponseToAggregator(signedTaskResponse)
 		case symbol := <-o.newOracleUpdateChan:
 			o.metrics.IncNumTasksReceived()
 			price, err := o.ProcessOracleUpdateRequest(*symbol)
@@ -312,24 +290,6 @@ func (o *Operator) Start(ctx context.Context) error {
 			go o.aggregatorRpcClient.SendSignedOracleResponseToAggregator(signedOracleResponse)
 		}
 	}
-}
-
-// Takes a NewTaskCreatedLog struct as input and returns a TaskResponseHeader struct.
-// The TaskResponseHeader struct is the struct that is signed and sent to the contract as a task response.
-func (o *Operator) ProcessNewTaskCreatedLog(newTaskCreatedLog *cstaskmanager.ContractIncredibleSquaringTaskManagerNewTaskCreated) *cstaskmanager.IIncredibleSquaringTaskManagerTaskResponse {
-	o.logger.Info("Received new task",
-		"numberToBeSquared", newTaskCreatedLog.Task.NumberToBeSquared,
-		"taskIndex", newTaskCreatedLog.TaskIndex,
-		"taskCreatedBlock", newTaskCreatedLog.Task.TaskCreatedBlock,
-		"quorumNumbers", newTaskCreatedLog.Task.QuorumNumbers,
-		"QuorumThresholdPercentage", newTaskCreatedLog.Task.QuorumThresholdPercentage,
-	)
-	numberSquared := big.NewInt(0).Exp(newTaskCreatedLog.Task.NumberToBeSquared, big.NewInt(2), nil)
-	taskResponse := &cstaskmanager.IIncredibleSquaringTaskManagerTaskResponse{
-		ReferenceTaskIndex: newTaskCreatedLog.TaskIndex,
-		NumberSquared:      numberSquared,
-	}
-	return taskResponse
 }
 
 // TODO: incorporate quorum numbers and quorum threshold percentage into the oracle request
@@ -358,50 +318,6 @@ func (o *Operator) ProcessOracleUpdateRequest(symbol string) (*csavs.IBlocklessA
 		Price:     big.NewInt(int64(price)),
 		Timestamp: uint32(blockTimestamp),
 	}, nil
-}
-
-// SubmitNewTask sends a new task to the task manager contract, and updates the Task dict struct
-// with the information of operators opted into quorum 0 at the block of task creation.
-func (o *Operator) SubmitNewTask(numToSquare *big.Int) (*cstaskmanager.IIncredibleSquaringTaskManagerTask, uint32, error) {
-	o.logger.Info("Operator sending new task", "numberToSquare", numToSquare)
-	// Send number to square to the task manager contract
-	newTask, taskIndex, err := o.avsWriter.SendNewTaskNumberToSquare(context.Background(), numToSquare, types.QUORUM_THRESHOLD_NUMERATOR, types.QUORUM_NUMBERS)
-	if err != nil {
-		o.logger.Error("Operator failed to send number to square", "err", err)
-		return nil, 0, err
-	}
-
-	// agg.tasksMu.Lock()
-	// agg.tasks[taskIndex] = newTask
-	// agg.tasksMu.Unlock()
-
-	// quorumThresholdPercentages := make([]uint32, len(newTask.QuorumNumbers))
-	// for i, _ := range newTask.QuorumNumbers {
-	// 	quorumThresholdPercentages[i] = newTask.QuorumThresholdPercentage
-	// }
-	// // TODO(samlaf): we use seconds for now, but we should ideally pass a blocknumber to the blsAggregationService
-	// // and it should monitor the chain and only expire the task aggregation once the chain has reached that block number.
-	// taskTimeToExpiry := taskChallengeWindowBlock * blockTimeSeconds
-	// agg.blsAggregationService.InitializeNewTask(taskIndex, newTask.TaskCreatedBlock, newTask.QuorumNumbers, quorumThresholdPercentages, taskTimeToExpiry)
-
-	return &newTask, taskIndex, nil
-}
-
-// TODO: remove dependency on aggregator
-func (o *Operator) SignTaskResponse(taskResponse *cstaskmanager.IIncredibleSquaringTaskManagerTaskResponse) (*aggregator.SignedTaskResponse, error) {
-	taskResponseHash, err := core.GetTaskResponseDigest(taskResponse)
-	if err != nil {
-		o.logger.Error("Error getting task response header hash. skipping task (this is not expected and should be investigated)", "err", err)
-		return nil, err
-	}
-	blsSignature := o.blsKeypair.SignMessage(taskResponseHash)
-	signedTaskResponse := &aggregator.SignedTaskResponse{
-		TaskResponse: *taskResponse,
-		BlsSignature: *blsSignature,
-		OperatorId:   o.operatorId,
-	}
-	o.logger.Debug("Signed task response", "signedTaskResponse", signedTaskResponse)
-	return signedTaskResponse, nil
 }
 
 func (o *Operator) RequestOracleUpdate(symbol string) {

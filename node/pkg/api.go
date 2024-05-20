@@ -2,7 +2,6 @@ package pkg
 
 import (
 	"encoding/json"
-	"math/big"
 	"net/http"
 	"time"
 
@@ -86,58 +85,6 @@ func RegisterAPIRoutes(cfg *avs.AppConfig, mux *http.ServeMux) {
 			Symbol: req.Symbol,
 			// current timestmap now
 			Timestamp: uint32(time.Now().Unix()),
-		}
-
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusOK)
-		if err := json.NewEncoder(w).Encode(response); err != nil {
-			cfg.Logger.Error("Failed to encode response: %v", err)
-			http.Error(w, "Error encoding response", http.StatusInternalServerError)
-		}
-	})
-
-	mux.HandleFunc("POST /api/task", func(w http.ResponseWriter, r *http.Request) {
-		// Parse the JSON body
-		var req struct {
-			Number string `json:"number"` // Use string to initially parse big integers
-		}
-		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-			cfg.Logger.Error("Failed to decode JSON request: %v", err)
-			http.Error(w, "Invalid request body", http.StatusBadRequest)
-			return
-		}
-
-		// Convert string to big.Int
-		numToSquare := new(big.Int)
-		if _, ok := numToSquare.SetString(req.Number, 10); !ok {
-			cfg.Logger.Error("Invalid number format")
-			http.Error(w, "Invalid number format", http.StatusBadRequest)
-			return
-		}
-
-		// Send number to square to the task manager contract
-		// NOTE: account assigned to operator pays for the gas
-		newTask, taskIndex, err := cfg.Operator.SubmitNewTask(numToSquare)
-		if err != nil {
-			cfg.Logger.Error("Operator failed to send number to square", "err", err)
-			http.Error(w, err.Error(), http.StatusInternalServerError)
-			return
-		}
-
-		// Construct the response
-		// Construct the response with full task details
-		response := struct {
-			NumberToBeSquared         string `json:"numberToBeSquared"`
-			TaskCreatedBlock          uint32 `json:"taskCreatedBlock"`
-			QuorumNumbers             []byte `json:"quorumNumbers"`
-			QuorumThresholdPercentage uint32 `json:"quorumThresholdPercentage"`
-			TaskIndex                 uint32 `json:"taskIndex"`
-		}{
-			NumberToBeSquared:         newTask.NumberToBeSquared.String(),
-			TaskCreatedBlock:          newTask.TaskCreatedBlock,
-			QuorumNumbers:             newTask.QuorumNumbers,
-			QuorumThresholdPercentage: newTask.QuorumThresholdPercentage,
-			TaskIndex:                 taskIndex,
 		}
 
 		w.Header().Set("Content-Type", "application/json")

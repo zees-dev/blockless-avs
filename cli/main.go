@@ -175,7 +175,7 @@ func main() {
 		{
 			Name:    "print-operator-status",
 			Aliases: []string{"pos"},
-			Usage:   "prints operator status as viewed from incredible squaring contracts",
+			Usage:   "prints operator status as viewed from blockless-avs contracts",
 			Action: func(ctx *cli.Context) error {
 				operator := ctx.App.Metadata[avs.AppConfigKey].(*avs.AppConfig).Operator
 				return operator.PrintOperatorStatus()
