@@ -309,13 +309,16 @@ func (o *Operator) ProcessOracleUpdateRequest(symbol string) (*csavs.IBlocklessA
 	}
 	blockTimestamp := block.Time()
 
-	// TODO: get current price from an HTTP endpoint
-	// TODO: convert price to 6DP (USDC/USDT)
+	price, err := getPriceByID(symbol)
+	if err != nil {
+		o.logger.Error("Error getting price", "err", err)
+		return nil, err
+	}
+	price6Decimals := formatPriceToSixDecimals(price)
 
-	price := 1235
 	return &csavs.IBlocklessAVSPrice{
 		Symbol:    symbol,
-		Price:     big.NewInt(int64(price)),
+		Price:     big.NewInt(int64(price6Decimals)),
 		Timestamp: uint32(blockTimestamp),
 	}, nil
 }

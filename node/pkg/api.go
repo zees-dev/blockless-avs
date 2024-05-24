@@ -77,7 +77,6 @@ func RegisterAPIRoutes(cfg *avs.AppConfig, mux *http.ServeMux) {
 		cfg.Operator.RequestOracleUpdate(req.Symbol)
 
 		// Construct the response
-		// Construct the response with full task details
 		response := struct {
 			Symbol    string `json:"symbol"`
 			Timestamp uint32 `json:"timestamp"`
