@@ -134,7 +134,7 @@ make holesky-start-anvil-all-deployed
 make holesky-start-aggregator
 make holesky-cli-setup-operator
 make cli-run-avs
-curl -X POST -d '{ "number": "2" }'  http://127.0.0.1:8080/v1/api/task
+curl -X POST -d '{ "symbol": "bitcoin" }' http://127.0.0.1:8080/v1/api/oracle
 ```
 
 ## Holesky Blockless AVS
