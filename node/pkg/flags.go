@@ -9,14 +9,17 @@ import (
 
 // Default values.
 const (
-	defaultPort         = 0
+	defaultPort         = 6000
 	defaultAddress      = "0.0.0.0"
-	defaultPeerDB       = "./node/peer-db"
-	defaultFunctionDB   = "./node/function-db"
+	defaultPeerDB       = "./data/peer-db"
+	defaultFunctionDB   = "./data/function-db"
 	defaultConcurrency  = uint(node.DefaultConcurrency)
 	defaultUseWebsocket = false
 	defaultRole         = "worker"
-	defaultWorkspace    = "./node/workspace"
+	defaultWorkspace    = "./data/workspace"
+	// defaultRuntimePath  = "./node/workspace"
+	defaultRuntimePath = "/Users/z/Desktop/blockless/blocklessnetwork/runtime/target/debug"
+	defaultRuntimeCLI  = "bls-runtime"
 )
 
 var (
@@ -24,7 +27,7 @@ var (
 		Name:       "role",
 		Required:   true,
 		Usage:      "role this note will have in the Blockless protocol (head or worker)",
-		Value:      blockless.HeadNodeLabel,
+		Value:      blockless.WorkerNodeLabel,
 		HasBeenSet: true,
 	}
 	PeerDatabasePath = &cli.StringFlag{
@@ -79,7 +82,7 @@ var (
 	HostPort = &cli.UintFlag{
 		Name:       "port",
 		Required:   true,
-		Usage:      "port that the b7s host will use",
+		Usage:      "p2p port that the b7s host will use; head nodes also use this for api server",
 		Value:      defaultPort,
 		HasBeenSet: true,
 	}
@@ -139,6 +142,20 @@ var (
 		Value:      0,
 		HasBeenSet: true,
 	}
+	RuntimePath = &cli.StringFlag{
+		Name: "runtime-path",
+		// Required:   true,
+		Usage:      "Blockless Runtime location (used by the worker node)",
+		Value:      defaultRuntimePath,
+		HasBeenSet: true,
+	}
+	RuntimeCLI = &cli.StringFlag{
+		Name: "runtime-cli",
+		// Required:   true,
+		Usage:      "Blockless Runtime binary (used by the worker node)",
+		Value:      defaultRuntimeCLI,
+		HasBeenSet: true,
+	}
 )
 
 func ParseFlags(c *cli.Context) config.Config {
@@ -156,17 +173,20 @@ func ParseFlags(c *cli.Context) config.Config {
 	websocket := c.Bool(Websocket.Name)
 	websocketPort := c.Uint(WebsocketPort.Name)
 	websocketDialbackPort := c.Uint(DialBackWebsocketPort.Name)
+
+	// TODO: fix this
+	// worker config
+	// runtimePath := c.String(RuntimePath.Name)
+	// runtimeCLI := c.String(RuntimeCLI.Name)
 	// cpuPercentage := c.Float64(CPUPercentage.Name)
 	// memoryMaxKB := c.Int64(MemoryMaxKB.Name)
-
-	// pflag.StringVar(&cfg.RuntimePath, "runtime-path", "", "runtime path (used by the worker node)")
-	// pflag.StringVar(&cfg.RuntimeCLI, "runtime-cli", "", "runtime path (used by the worker node)")
 
 	return config.Config{
 		Role:           role,
 		PeerDB:         peerDB,
 		FunctionDB:     functionDB,
 		Concurrency:    concurrency,
+		Workspace:      defaultWorkspace,
 		LoadAttributes: loadAttributes,
 		BootNodes:      bootNodes,
 		Connectivity: config.Connectivity{
@@ -178,6 +198,12 @@ func ParseFlags(c *cli.Context) config.Config {
 			Websocket:             websocket,
 			WebsocketPort:         websocketPort,
 			WebsocketDialbackPort: websocketDialbackPort,
+		},
+		Worker: config.Worker{
+			// RuntimePath: runtimePath,
+			// RuntimeCLI:  runtimeCLI,
+			RuntimePath: defaultRuntimePath,
+			RuntimeCLI:  defaultRuntimeCLI,
 		},
 	}
 }
