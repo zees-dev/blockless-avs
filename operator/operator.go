@@ -230,15 +230,13 @@ func NewOperatorFromConfig(logger logging.Logger, c avstypes.NodeConfig) (*Opera
 		return nil, err
 	}
 	operator.operatorId = operatorId
-	logger.Info("Operator info",
+	logger.Debug("Operator info",
 		"operatorId", operatorId,
 		"operatorAddr", c.OperatorAddress,
 		"operatorG1Pubkey", operator.blsKeypair.GetPubKeyG1(),
 		"operatorG2Pubkey", operator.blsKeypair.GetPubKeyG2(),
 	)
-
 	return operator, nil
-
 }
 
 func (o *Operator) Start(ctx context.Context) error {

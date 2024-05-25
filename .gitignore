@@ -31,5 +31,4 @@ logs.txt
 anvil/snapshots/
 
 # node data
-function-db/
-peer-db/
+data/

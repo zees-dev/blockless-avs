@@ -142,3 +142,14 @@ curl -X POST -d '{ "symbol": "bitcoin" }' http://127.0.0.1:8080/v1/api/oracle
 ```sh
 make blockless-holesky-deploy-avs
 ```
+
+---
+
+```sh
+# run head node
+go run cli/*.go run-avs --role head --function-db ./data/head/function-db --peer-db ./data/head/peer-db
+
+# run worker node - using exposed peer id from head node
+P2P_ID=$(curl -s http://localhost:6000/api/v1/meta | jq -r .peer_id)
+go run cli/*.go run-avs --boot-nodes "/ip4/127.0.0.1/tcp/6000/p2p/$P2P_ID" --port 6010
+```

@@ -1,31 +1,112 @@
 package pkg
 
 import (
+	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"time"
 
+	b7sAPI "github.com/blocklessnetwork/b7s/api"
+	b7sNode "github.com/blocklessnetwork/b7s/node"
+
+	"github.com/blocklessnetwork/b7s/models/blockless"
+	"github.com/blocklessnetwork/b7s/models/execute"
+	"github.com/blocklessnetwork/b7s/node/aggregate"
 	avs "github.com/zees-dev/blockless-avs"
-	proto "github.com/zees-dev/blockless-avs/node/proto"
 )
 
 // RegisterAPIRoutes sets up the API routes.
-func RegisterAPIRoutes(cfg *avs.AppConfig, mux *http.ServeMux) {
+func RegisterAPIRoutes(node *b7sNode.Node, cfg *avs.AppConfig, mux *http.ServeMux) {
 	mux.HandleFunc("GET /health", func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
 		w.Write([]byte("OK"))
 	})
 
-	// Example handler that marshals a protobuf message to JSON and writes it to the response
-	mux.HandleFunc("GET /api", func(w http.ResponseWriter, r *http.Request) {
-		// Create an instance of the protobuf message
-		appMeta := &proto.AppMeta{
-			Name: cfg.AppName,
+	mux.HandleFunc("POST /functions/install", func(w http.ResponseWriter, r *http.Request) {
+		var req b7sAPI.InstallFunctionRequest
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			cfg.Logger.Error("Failed to decode JSON request: %v", err)
+			http.Error(w, "Invalid request body", http.StatusBadRequest)
+			return
 		}
 
-		// Convert protobuf message to JSON
-		// Note: Consider error handling for production code
-		jsonData, err := json.Marshal(appMeta)
+		if req.URI == "" && req.CID == "" {
+			http.Error(w, "URI or CID are required", http.StatusBadRequest)
+			return
+		}
+
+		// Add a deadline to the context.
+		const functionInstallTimeout = 10 * time.Second
+		reqCtx, cancel := context.WithTimeout(r.Context(), functionInstallTimeout)
+		defer cancel()
+
+		// Start function install in a separate goroutine and signal when it's done.
+		fnErr := make(chan error)
+		go func() {
+			err := node.PublishFunctionInstall(reqCtx, req.URI, req.CID, req.Subgroup)
+			fnErr <- err
+		}()
+
+		// Wait until either function install finishes, or request times out.
+		select {
+		// Context timed out.
+		case <-reqCtx.Done():
+			status := http.StatusRequestTimeout
+			if !errors.Is(reqCtx.Err(), context.DeadlineExceeded) {
+				status = http.StatusInternalServerError
+			}
+			http.Error(w, "Function installation timed out", status)
+			return
+
+		// Work done.
+		case err := <-fnErr:
+			cfg.Logger.Error("Failed to install function", "err", err)
+			if err != nil {
+				http.Error(w, "Function installation failed", http.StatusInternalServerError)
+			}
+			break
+		}
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte("OK"))
+	})
+
+	mux.HandleFunc("POST /functions/execute", func(w http.ResponseWriter, r *http.Request) {
+		var req b7sAPI.ExecuteRequest
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			cfg.Logger.Error("Failed to decode JSON request: %v", err)
+			http.Error(w, "Invalid request body", http.StatusBadRequest)
+			return
+		}
+
+		exr := execute.Request{
+			Config:     req.Config,
+			FunctionID: req.FunctionID,
+			Method:     req.Method,
+			Parameters: req.Parameters,
+		}
+
+		// Get the execution result.
+		code, id, results, cluster, err := node.ExecuteFunction(r.Context(), exr, req.Topic)
+		if err != nil {
+			cfg.Logger.Warn("node failed to execute function", "function", req.FunctionID, "err", err)
+		}
+
+		// Transform the node response format to the one returned by the API.
+		res := b7sAPI.ExecuteResponse{
+			Code:      code,
+			RequestID: id,
+			Results:   aggregate.Aggregate(results),
+			Cluster:   cluster,
+		}
+
+		// Communicate the reason for failure in these cases.
+		if errors.Is(err, blockless.ErrRollCallTimeout) || errors.Is(err, blockless.ErrExecutionNotEnoughNodes) {
+			res.Message = err.Error()
+		}
+
+		// Send the response.
+		jsonData, err := json.Marshal(res)
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
@@ -34,31 +115,58 @@ func RegisterAPIRoutes(cfg *avs.AppConfig, mux *http.ServeMux) {
 		// Set content type to JSON for the response
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
+		w.Write(jsonData)
+	})
 
-		// Write the JSON data to the response
+	mux.HandleFunc("POST /functions/requests/result", func(w http.ResponseWriter, r *http.Request) {
+		var req b7sAPI.ExecutionResultRequest
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			cfg.Logger.Error("Failed to decode JSON request: %v", err)
+			http.Error(w, "Invalid request body", http.StatusBadRequest)
+			return
+		}
+
+		if req.ID == "" {
+			http.Error(w, "missing request ID", http.StatusBadRequest)
+			return
+		}
+
+		// Lookup execution result.
+		result, ok := node.ExecutionResult(req.ID)
+		if !ok {
+			http.Error(w, "Execution result not found", http.StatusNotFound)
+		}
+
+		// Send the response back.
+		jsonData, err := json.Marshal(result)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+
+		// Set content type to JSON for the response
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
 		w.Write(jsonData)
 	})
 
 	// Register the handler function for the route
-	mux.HandleFunc("GET /api/meta", func(w http.ResponseWriter, r *http.Request) {
-
-		// Note: Consider error handling for production code
-		jsonData, err := json.Marshal(proto.API{
-			EndPoints: &proto.API_End_Points{
-				GetMetaData: "/api/getMeta",
-			},
-		})
-		if err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
-			return
+	mux.HandleFunc("GET /meta", func(w http.ResponseWriter, r *http.Request) {
+		response := struct {
+			PeerID  string `json:"peer_id"`
+			P2PPort uint32 `json:"p2p_port"`
+		}{
+			PeerID:  node.ID(),
+			P2PPort: uint32(cfg.BlocklessConfig.Connectivity.Port),
 		}
 
 		// Set content type to JSON for the response
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
-
-		// Write the JSON data to the response
-		w.Write(jsonData)
+		if err := json.NewEncoder(w).Encode(response); err != nil {
+			cfg.Logger.Error("Failed to encode response: %v", err)
+			http.Error(w, "Error encoding response", http.StatusInternalServerError)
+		}
 	})
 
 	// newOracleUpdateChan

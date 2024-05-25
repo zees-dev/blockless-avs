@@ -9,6 +9,7 @@ import (
 )
 
 const AppConfigKey = "appConfig"
+const LoggerKey = "logger"
 
 type AppConfig struct {
 	// AVSFlags config.Config
