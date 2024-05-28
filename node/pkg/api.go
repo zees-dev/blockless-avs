@@ -198,37 +198,4 @@ func RegisterAPIRoutes(node *b7sNode.Node, cfg *avs.CoreConfig, mux *http.ServeM
 			http.Error(w, "Error encoding response", http.StatusInternalServerError)
 		}
 	})
-
-	// newOracleUpdateChan
-	mux.HandleFunc("POST /api/oracle", func(w http.ResponseWriter, r *http.Request) {
-		// Parse the JSON body
-		var req struct {
-			Symbol string `json:"symbol"`
-		}
-		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-			cfg.Logger.Error("Failed to decode JSON request: %v", err)
-			http.Error(w, "Invalid request body", http.StatusBadRequest)
-			return
-		}
-
-		// Request an oracle update
-		cfg.Operator.RequestOracleUpdate(req.Symbol)
-
-		// Construct the response
-		response := struct {
-			Symbol    string `json:"symbol"`
-			Timestamp uint32 `json:"timestamp"`
-		}{
-			Symbol: req.Symbol,
-			// current timestmap now
-			Timestamp: uint32(time.Now().Unix()),
-		}
-
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusOK)
-		if err := json.NewEncoder(w).Encode(response); err != nil {
-			cfg.Logger.Error("Failed to encode response: %v", err)
-			http.Error(w, "Error encoding response", http.StatusInternalServerError)
-		}
-	})
 }
