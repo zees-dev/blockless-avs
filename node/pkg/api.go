@@ -17,7 +17,7 @@ import (
 )
 
 // RegisterAPIRoutes sets up the API routes.
-func RegisterAPIRoutes(node *b7sNode.Node, cfg *avs.AppConfig, mux *http.ServeMux) {
+func RegisterAPIRoutes(node *b7sNode.Node, cfg *avs.CoreConfig, mux *http.ServeMux, registry *FunctionRegistry) {
 	mux.HandleFunc("GET /health", func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
 		w.Write([]byte("OK"))
@@ -71,6 +71,28 @@ func RegisterAPIRoutes(node *b7sNode.Node, cfg *avs.AppConfig, mux *http.ServeMu
 		w.Write([]byte("OK"))
 	})
 
+	// Register a new function ID
+	// TODO: this should be a protected function which AVS operators can call
+	mux.HandleFunc("POST /functions/register", func(w http.ResponseWriter, r *http.Request) {
+		var req struct {
+			FunctionID string `json:"function_id"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			cfg.Logger.Error("Failed to decode JSON request: %v", err)
+			http.Error(w, "Invalid request body", http.StatusBadRequest)
+			return
+		}
+
+		if req.FunctionID == "" {
+			http.Error(w, "Function ID is required", http.StatusBadRequest)
+			return
+		}
+
+		registry.RegisterFunctions(req.FunctionID)
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte("Function ID registered"))
+	})
+
 	mux.HandleFunc("POST /functions/execute", func(w http.ResponseWriter, r *http.Request) {
 		var req b7sAPI.ExecuteRequest
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -79,14 +101,19 @@ func RegisterAPIRoutes(node *b7sNode.Node, cfg *avs.AppConfig, mux *http.ServeMu
 			return
 		}
 
+		// Check if the function ID is registered.
+		if _, exists := registry.subscribers[req.FunctionID]; !exists {
+			http.Error(w, "Function ID not registered", http.StatusNotFound)
+			return
+		}
+
+		// Get the execution result.
 		exr := execute.Request{
 			Config:     req.Config,
 			FunctionID: req.FunctionID,
 			Method:     req.Method,
 			Parameters: req.Parameters,
 		}
-
-		// Get the execution result.
 		code, id, results, cluster, err := node.ExecuteFunction(r.Context(), exr, req.Topic)
 		if err != nil {
 			cfg.Logger.Warn("node failed to execute function", "function", req.FunctionID, "err", err)
@@ -111,6 +138,9 @@ func RegisterAPIRoutes(node *b7sNode.Node, cfg *avs.AppConfig, mux *http.ServeMu
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
+
+		// Notify subscribers.
+		go registry.Notify(req.FunctionID, NewExecuteFunctionResponse(req.FunctionID, res))
 
 		// Set content type to JSON for the response
 		w.Header().Set("Content-Type", "application/json")

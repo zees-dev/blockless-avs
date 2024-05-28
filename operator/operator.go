@@ -290,6 +290,11 @@ func (o *Operator) Start(ctx context.Context) error {
 	}
 }
 
+func (o *Operator) RequestOracleUpdate(symbol string) {
+	o.logger.Info("Operator requesting oracle update", "symbol", symbol)
+	o.newOracleUpdateChan <- &symbol
+}
+
 // TODO: incorporate quorum numbers and quorum threshold percentage into the oracle request
 // TODO: incorporate deadline into oracle request
 func (o *Operator) ProcessOracleUpdateRequest(symbol string) (*csavs.IBlocklessAVSPrice, error) {
@@ -319,11 +324,6 @@ func (o *Operator) ProcessOracleUpdateRequest(symbol string) (*csavs.IBlocklessA
 		Price:     big.NewInt(int64(price6Decimals)),
 		Timestamp: uint32(blockTimestamp),
 	}, nil
-}
-
-func (o *Operator) RequestOracleUpdate(symbol string) {
-	o.logger.Info("Operator requesting oracle update", "symbol", symbol)
-	o.newOracleUpdateChan <- &symbol
 }
 
 func (o *Operator) SignOracleResponse(price *csavs.IBlocklessAVSPrice) (*aggregator.SignedOracleResponse, error) {

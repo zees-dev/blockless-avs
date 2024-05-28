@@ -158,7 +158,31 @@ var (
 	}
 )
 
-func ParseFlags(c *cli.Context) config.Config {
+// BlocklessFlags are the flags that can be passed to the Blockless node.
+var BlocklessFlags = []cli.Flag{
+	Role,
+	PeerDatabasePath,
+	FunctionDatabasePath,
+	Workspace,
+	Concurrency,
+	LoadAttributes,
+	PrivateKey,
+	HostAddress,
+	HostPort,
+	BootNodes,
+	DialBackAddress,
+	DialBackPort,
+	Websocket,
+	WebsocketPort,
+	DialBackWebsocketPort,
+	CPUPercentage,
+	MemoryMaxKB,
+	RuntimePath,
+	RuntimeCLI,
+}
+
+// ParseBlocklesssFlags parses the flags passed to the Blockless node.
+func ParseBlocklesssFlags(c *cli.Context) config.Config {
 	role := c.String(Role.Name)
 	peerDB := c.String(PeerDatabasePath.Name)
 	functionDB := c.String(FunctionDatabasePath.Name)

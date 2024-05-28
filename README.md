@@ -133,6 +133,7 @@ cd -
 make holesky-start-anvil-all-deployed
 make holesky-start-aggregator
 make holesky-cli-setup-operator
+
 make cli-run-avs
 curl -X POST -d '{ "symbol": "bitcoin" }' http://127.0.0.1:8080/v1/api/oracle
 ```
@@ -147,9 +148,41 @@ make blockless-holesky-deploy-avs
 
 ```sh
 # run head node
-go run cli/*.go run-avs --role head --function-db ./data/head/function-db --peer-db ./data/head/peer-db
+go run cli/*.go run-avs-aggregator \
+  --role head \
+  --function-db ./data/head/function-db \
+  --peer-db ./data/head/peer-db \
+  --blockless-avs-deployment contracts/script/output/17000/blockless_avs_deployment_output.json \
+  --ecdsa-private-key 0x2a871d0798f97d79848a013d4936a73bf4cc922c825d33c1cf7073dff6d409c6 \
+  2>&1 | zap-pretty
 
 # run worker node - using exposed peer id from head node
 P2P_ID=$(curl -s http://localhost:6000/api/v1/meta | jq -r .peer_id)
-go run cli/*.go run-avs --boot-nodes "/ip4/127.0.0.1/tcp/6000/p2p/$P2P_ID" --port 6010
+go run cli/*.go run-avs-operator --boot-nodes "/ip4/127.0.0.1/tcp/6000/p2p/$P2P_ID" --port 6010
+```
+
+```sh
+# oracle price request
+curl --location 'http://localhost:6000/api/v1/functions/execute' \
+--header 'Accept: application/json, text/plain, */*' \
+--header 'Content-Type: application/json;charset=UTF-8' \
+--data '{
+    "function_id": "bafybeic222vtsk64qid6gtjfw33wvt27d76pshadk4c6yagcz2kidvjpkm",
+    "method": "blockless-avs-price-oracle.wasm",
+    "config": {
+        "permissions":["https://api.coingecko.com"],
+        "stdin": "bitcoin",
+        "number_of_nodes": 0,
+        "result_aggregation": {
+            "enable": false,
+            "type": "none",
+            "parameters": [
+                {
+                    "name": "type",
+                    "value": ""
+                }
+            ]
+        }
+    }
+}'
 ```

@@ -44,7 +44,7 @@ type Config struct {
 	AggregatorAddress common.Address
 }
 
-// These are read from ConfigFileFlag
+// These are read from OperatorConfigFileFlag
 type ConfigRaw struct {
 	Environment                sdklogging.LogLevel `yaml:"environment"`
 	EthRpcUrl                  string              `yaml:"eth_rpc_url"`
@@ -68,7 +68,7 @@ type BlocklessAVSContractsRaw struct {
 func NewConfig(ctx *cli.Context) (*Config, error) {
 
 	var configRaw ConfigRaw
-	configFilePath := ctx.String(ConfigFileFlag.Name)
+	configFilePath := ctx.String(AggregatorConfigFileFlag.Name)
 	if configFilePath != "" {
 		sdkutils.ReadYamlConfig(configFilePath, &configRaw)
 	}
@@ -171,7 +171,14 @@ var (
 		Value:      true,
 		HasBeenSet: true,
 	}
-	ConfigFileFlag = &cli.StringFlag{
+	AggregatorConfigFileFlag = &cli.StringFlag{
+		Name:       "config",
+		Usage:      "Load configuration from `FILE`",
+		Value:      "config-files/aggregator.yaml",
+		Required:   true,
+		HasBeenSet: true,
+	}
+	OperatorConfigFileFlag = &cli.StringFlag{
 		Name:       "config",
 		Usage:      "Load configuration from `FILE`",
 		Value:      "config-files/operator.anvil.yaml",
@@ -192,17 +199,8 @@ var (
 	/* Optional Flags */
 )
 
-var requiredFlags = []cli.Flag{
-	ConfigFileFlag,
+var AggregatorFlags = []cli.Flag{
+	AggregatorConfigFileFlag,
 	BlocklessAVSDeploymentFileFlag,
 	EcdsaPrivateKeyFlag,
 }
-
-var optionalFlags = []cli.Flag{}
-
-func init() {
-	Flags = append(requiredFlags, optionalFlags...)
-}
-
-// Flags contains the list of configuration options available to the binary.
-var Flags []cli.Flag

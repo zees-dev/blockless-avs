@@ -22,14 +22,13 @@ var (
 
 func main() {
 	app := cli.NewApp()
-	app.Flags = config.Flags
+	app.Flags = config.AggregatorFlags
 	app.Version = fmt.Sprintf("%s-%s-%s", Version, GitCommit, GitDate)
 	app.Name = "blockless-avs-aggregator"
 	app.Usage = "Blockless AVS Aggregator"
 	app.Description = "Service that aggregates signatures and submits result on-chain."
 
 	app.Action = aggregatorMain
-
 	if err := app.Run(os.Args); err != nil {
 		log.Fatalln("Application failed.", "Message:", err)
 	}
