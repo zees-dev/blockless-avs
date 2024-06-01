@@ -12,11 +12,11 @@ import (
 
 	"github.com/zees-dev/blockless-avs/aggregator"
 
+	avs "github.com/zees-dev/blockless-avs"
 	csavs "github.com/zees-dev/blockless-avs/contracts/bindings/BlocklessAVS"
 	"github.com/zees-dev/blockless-avs/core"
 	"github.com/zees-dev/blockless-avs/core/chainio"
 	"github.com/zees-dev/blockless-avs/metrics"
-	avstypes "github.com/zees-dev/blockless-avs/types"
 
 	"github.com/Layr-Labs/eigensdk-go/chainio/clients"
 	sdkelcontracts "github.com/Layr-Labs/eigensdk-go/chainio/clients/elcontracts"
@@ -38,7 +38,7 @@ const AVS_NAME = "blockless-avs"
 const SEM_VER = "0.0.1"
 
 type Operator struct {
-	config    avstypes.NodeConfig
+	config    avs.NodeConfig
 	logger    logging.Logger
 	ethClient eth.Client
 	// TODO(samlaf): remove both avsWriter and eigenlayerWrite from operator
@@ -68,7 +68,7 @@ type Operator struct {
 // TODO(samlaf): config is a mess right now, since the chainio client constructors
 //
 //	take the config in core (which is shared with aggregator and challenger)
-func NewOperatorFromConfig(logger logging.Logger, c avstypes.NodeConfig) (*Operator, error) {
+func NewOperatorFromConfig(logger logging.Logger, c avs.NodeConfig) (avs.AVSOperator, error) {
 	reg := prometheus.NewRegistry()
 	eigenMetrics := sdkmetrics.NewEigenMetrics(AVS_NAME, c.EigenMetricsIpPortAddress, reg, logger)
 	avsAndEigenMetrics := metrics.NewAvsAndEigenMetrics(AVS_NAME, eigenMetrics, reg)

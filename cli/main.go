@@ -12,14 +12,36 @@ import (
 	"github.com/urfave/cli/v2"
 	avs "github.com/zees-dev/blockless-avs"
 	"github.com/zees-dev/blockless-avs/aggregator"
-	"github.com/zees-dev/blockless-avs/core/config"
-	"github.com/zees-dev/blockless-avs/core/logging"
-	node "github.com/zees-dev/blockless-avs/node/pkg"
+	"github.com/zees-dev/blockless-avs/core"
 	"github.com/zees-dev/blockless-avs/operator"
-	"github.com/zees-dev/blockless-avs/types"
 )
 
 const AppName = "Blockless AVS"
+
+var (
+	DevModeFlag = &cli.BoolFlag{
+		Name:       "devmode",
+		Required:   true,
+		Usage:      "Run in development mode",
+		Value:      true,
+		HasBeenSet: true,
+	}
+	/* Operator Flags */
+	OperatorConfigFileFlag = &cli.StringFlag{
+		Name:       "config",
+		Usage:      "Load configuration from `FILE`",
+		Value:      "config-files/operator.anvil.yaml",
+		Required:   true,
+		HasBeenSet: true,
+	}
+	HeadlessFlag = &cli.BoolFlag{
+		Name:       "headless",
+		Required:   true,
+		Usage:      "Run blockless node in headless mode",
+		Value:      true,
+		HasBeenSet: true,
+	}
+)
 
 func main() {
 	app := cli.NewApp()
@@ -29,24 +51,21 @@ func main() {
 
 	// globally required flags
 	app.Flags = []cli.Flag{
-		config.DevModeFlag,
-		config.HeadlessFlag,
+		DevModeFlag,
 	}
 
 	// init app state, store in context
 	app.Before = func(ctx *cli.Context) error {
-		logger := logging.NewZeroLogger(logging.Development)
+		logger := core.NewZeroLogger(core.Development)
 
-		devMode := ctx.Bool(config.DevModeFlag.Name)
-		headless := ctx.Bool(config.HeadlessFlag.Name)
+		devMode := ctx.Bool(DevModeFlag.Name)
 
 		ctx.App.Metadata[avs.CoreConfigKey] = &avs.CoreConfig{
 			AppName: AppName,
 			Logger:  logger,
 			// NodeConfig:      &nodeConfig,
 			// Operator:        operator,
-			DevMode:  devMode,
-			Headless: headless,
+			DevMode: devMode,
 		}
 		return nil
 	}
@@ -60,7 +79,7 @@ func main() {
 				coreConfig := ctx.App.Metadata[avs.CoreConfigKey].(*avs.CoreConfig)
 
 				// parse operator specific flags
-				config, err := config.NewConfig(ctx)
+				config, err := aggregator.NewAggregatorConfig(ctx, coreConfig.Logger)
 				if err != nil {
 					return err
 				}
@@ -75,7 +94,7 @@ func main() {
 				}
 
 				// parse blockless node specific flags
-				b7sConfig := node.ParseBlocklesssFlags(ctx)
+				b7sConfig := ParseBlocklesssFlags(ctx)
 				coreConfig.BlocklessConfig = &b7sConfig
 
 				ctx.App.Metadata[avs.AggregatorConfigKey] = &avs.AggregatorConfig{
@@ -84,7 +103,7 @@ func main() {
 				}
 				return nil
 			},
-			Flags: append(node.BlocklessFlags, config.AggregatorFlags...),
+			Flags: append(aggregator.AggregatorFlags, BlocklessFlags...),
 		},
 		{
 			Name:   "run-avs-operator",
@@ -93,9 +112,11 @@ func main() {
 			Before: func(ctx *cli.Context) error {
 				coreConfig := ctx.App.Metadata[avs.CoreConfigKey].(*avs.CoreConfig)
 
+				headless := ctx.Bool(HeadlessFlag.Name)
+
 				// parse operator specific flags
-				configPath := ctx.String(config.OperatorConfigFileFlag.Name)
-				nodeConfig := types.NodeConfig{}
+				configPath := ctx.String(OperatorConfigFileFlag.Name)
+				nodeConfig := avs.NodeConfig{}
 				if err := sdkutils.ReadYamlConfig(configPath, &nodeConfig); err != nil {
 					return err
 				}
@@ -105,17 +126,18 @@ func main() {
 				}
 
 				// parse blockless node specific flags
-				b7sConfig := node.ParseBlocklesssFlags(ctx)
+				b7sConfig := ParseBlocklesssFlags(ctx)
 				coreConfig.BlocklessConfig = &b7sConfig
 
 				ctx.App.Metadata[avs.OperatorConfigKey] = &avs.OperatorConfig{
 					CoreConfig: coreConfig,
 					Operator:   operator,
 					NodeConfig: &nodeConfig,
+					Headless:   headless,
 				}
 				return nil
 			},
-			Flags: append(node.BlocklessFlags, config.OperatorConfigFileFlag),
+			Flags: append(BlocklessFlags, OperatorConfigFileFlag, HeadlessFlag),
 		},
 		{
 			Name:    "register-operator-with-eigenlayer",
@@ -124,9 +146,9 @@ func main() {
 			Action: func(ctx *cli.Context) error {
 				logger := ctx.App.Metadata[avs.CoreConfigKey].(*avs.CoreConfig).Logger
 
-				configPath := ctx.String(config.OperatorConfigFileFlag.Name)
+				configPath := ctx.String(OperatorConfigFileFlag.Name)
 
-				nodeConfig := types.NodeConfig{}
+				nodeConfig := avs.NodeConfig{}
 				if err := sdkutils.ReadYamlConfig(configPath, &nodeConfig); err != nil {
 					return err
 				}
@@ -136,7 +158,7 @@ func main() {
 				}
 				return operator.RegisterOperatorWithEigenlayer()
 			},
-			Flags: []cli.Flag{config.OperatorConfigFileFlag},
+			Flags: []cli.Flag{OperatorConfigFileFlag},
 		},
 		{
 			Name:    "deposit-into-strategy",
@@ -145,8 +167,8 @@ func main() {
 			Action: func(ctx *cli.Context) error {
 				logger := ctx.App.Metadata[avs.CoreConfigKey].(*avs.CoreConfig).Logger
 
-				configPath := ctx.String(config.OperatorConfigFileFlag.Name)
-				nodeConfig := types.NodeConfig{}
+				configPath := ctx.String(OperatorConfigFileFlag.Name)
+				nodeConfig := avs.NodeConfig{}
 				if err := sdkutils.ReadYamlConfig(configPath, &nodeConfig); err != nil {
 					return err
 				}
@@ -166,7 +188,7 @@ func main() {
 				return operator.DepositIntoStrategy(strategyAddr, amount)
 			},
 			Flags: []cli.Flag{
-				config.OperatorConfigFileFlag,
+				OperatorConfigFileFlag,
 				// &cli.StringFlag{
 				// 	Name:     "strategy-addr",
 				// 	Usage:    "Address of Strategy contract to deposit into",
@@ -186,9 +208,9 @@ func main() {
 			Action: func(ctx *cli.Context) error {
 				logger := ctx.App.Metadata[avs.CoreConfigKey].(*avs.CoreConfig).Logger
 
-				configPath := ctx.String(config.OperatorConfigFileFlag.Name)
+				configPath := ctx.String(OperatorConfigFileFlag.Name)
 
-				nodeConfig := types.NodeConfig{}
+				nodeConfig := avs.NodeConfig{}
 				if err := sdkutils.ReadYamlConfig(configPath, &nodeConfig); err != nil {
 					return err
 				}
@@ -210,7 +232,7 @@ func main() {
 				}
 				return operator.RegisterOperatorWithAvs(operatorEcdsaPrivKey)
 			},
-			Flags: []cli.Flag{config.OperatorConfigFileFlag},
+			Flags: []cli.Flag{OperatorConfigFileFlag},
 		},
 		{
 			Name:    "deregister-operator-with-avs",
@@ -218,7 +240,7 @@ func main() {
 			Action: func(ctx *cli.Context) error {
 				panic("not implemented")
 			},
-			Flags: []cli.Flag{config.OperatorConfigFileFlag},
+			Flags: []cli.Flag{OperatorConfigFileFlag},
 		},
 		{
 			Name:    "print-operator-status",
@@ -227,8 +249,8 @@ func main() {
 			Action: func(ctx *cli.Context) error {
 				logger := ctx.App.Metadata[avs.CoreConfigKey].(*avs.CoreConfig).Logger
 
-				configPath := ctx.String(config.OperatorConfigFileFlag.Name)
-				nodeConfig := types.NodeConfig{}
+				configPath := ctx.String(OperatorConfigFileFlag.Name)
+				nodeConfig := avs.NodeConfig{}
 				if err := sdkutils.ReadYamlConfig(configPath, &nodeConfig); err != nil {
 					return err
 				}
@@ -238,7 +260,7 @@ func main() {
 				}
 				return operator.PrintOperatorStatus()
 			},
-			Flags: []cli.Flag{config.OperatorConfigFileFlag},
+			Flags: []cli.Flag{OperatorConfigFileFlag},
 		},
 	}
 

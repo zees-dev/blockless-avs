@@ -4,7 +4,7 @@ import (
 	"context"
 
 	csavs "github.com/zees-dev/blockless-avs/contracts/bindings/BlocklessAVS"
-	"github.com/zees-dev/blockless-avs/core/config"
+	"github.com/zees-dev/blockless-avs/core"
 
 	gethcommon "github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
@@ -43,7 +43,7 @@ type AvsWriter struct {
 
 var _ AvsWriterer = (*AvsWriter)(nil)
 
-func BuildAvsWriterFromConfig(c *config.Config) (*AvsWriter, error) {
+func BuildAvsWriterFromConfig(c *core.Config) (*AvsWriter, error) {
 	return BuildAvsWriter(c.TxMgr, c.BlocklessAVSRegistryCoordinatorAddr, c.OperatorStateRetrieverAddr, *c.EthHttpClient, c.Logger)
 }
 

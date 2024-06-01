@@ -4,10 +4,8 @@ import (
 	"fmt"
 	"net/http"
 	"os"
-	"os/exec"
 	"os/signal"
 	"path/filepath"
-	"runtime"
 	"time"
 
 	"github.com/pkg/errors"
@@ -24,7 +22,7 @@ import (
 	"github.com/multiformats/go-multiaddr"
 	"github.com/urfave/cli/v2"
 	avs "github.com/zees-dev/blockless-avs"
-	"github.com/zees-dev/blockless-avs/core/logging"
+	"github.com/zees-dev/blockless-avs/core"
 	node "github.com/zees-dev/blockless-avs/node/pkg"
 )
 
@@ -39,7 +37,7 @@ func (p *PebbleNoopLogger) Fatalf(_ string, _ ...any) {}
 func RunAVS(c *cli.Context) error {
 	app := avs.GetCoreConfig(c)
 
-	logger := app.Logger.(*logging.ZeroLogger).Inner()
+	logger := app.Logger.(*core.ZeroLogger).Inner()
 
 	// Signal catching for clean shutdown.
 	sig := make(chan os.Signal, 1)
@@ -158,39 +156,27 @@ func RunAVS(c *cli.Context) error {
 	if role == blockless.WorkerNode {
 		// Only worker nodes startup operator
 		operatorApp := avs.GetOperatorConfig(c)
-		go func() {
-			// TODO: check operator registration
-			logger.Info().Msg("starting operator...")
-			if err := operatorApp.Operator.Start(c.Context); err != nil {
-				panic(err)
-			} else {
-				logger.Info().Msg("started operator")
-			}
-		}()
 
-		// every 10s, request oracle update from operator
-		// TODO: update this code, ideally b7s worker should be executing this on demand from headnode (through api request)
-		go func() {
-			ticker := time.NewTicker(10 * time.Second)
-			for {
-				select {
-				case <-ticker.C:
-					logger.Info().Msg("requesting oracle update")
-					operatorApp.Operator.RequestOracleUpdate("bitcoin")
-				}
-			}
-		}()
+		// TODO: remove all redundant operator package code; we only need the signing bit (until this moves to DAPP)!
+		// go func() {
+		// 	// TODO: check operator registration
+		// 	logger.Info().Msg("starting operator...")
+		// 	if err := operatorApp.Operator.Start(c.Context); err != nil {
+		// 		panic(err)
+		// 	} else {
+		// 		logger.Info().Msg("started operator")
+		// 	}
+		// }()
 
 		// ensure runtime path and binary are set
 		// TODO: convert relative runtime path to an absolute path.
 		logger.Info().Str("runtime_path", app.BlocklessConfig.Worker.RuntimePath).Str("runtime_cli", app.BlocklessConfig.Worker.RuntimeCLI).Msg("worker node detected")
 		if app.BlocklessConfig.Worker.RuntimePath == "" || app.BlocklessConfig.Worker.RuntimeCLI == "" {
-			logger.Error().Msg("runtime path and binary are required for worker nodes")
 			return errors.New("runtime path and binary are required for worker nodes")
 		}
 
 		// TODO: only worker nodes can run the browser.
-		if !app.Headless {
+		if !operatorApp.Headless {
 			logger.Info().Msg("Opening browser...")
 			// 	go func() {
 			// 		waitForServer(serverURL)
@@ -291,29 +277,30 @@ func RunAVS(c *cli.Context) error {
 			// TODO: migrate the following logic into another function
 			err := func() error {
 				// TODO: update and use the mapping from registry to determine on-chain contract function params to call
-				if res.RequestID != whitelistedCIDs[0] {
-					return fmt.Errorf("received result for unknown function ID: %s", res.RequestID)
+				if res.FunctionID != whitelistedCIDs[0] {
+					return fmt.Errorf("received result for unknown function ID: %s", res.FunctionID)
 				}
 
 				logger.Info().Str("function_id", res.FunctionID).Str("request_id", res.RequestID).Msg("received function execution result")
 				logger.Info().Any("results", res.Results).Msg("results")
 
-				// TODO: process result and format it to oracle price update
-				// TODO: We are mocking a response here!
-				// price, err := app.Operator.ProcessOracleUpdateRequest("bitcoin")
-				// if err != nil {
-				// 	errors.Wrap(err, "could not process oracle update request")
-				// }
-				// signedOracleResponse, err := app.Operator.SignOracleResponse(price)
-				// if err != nil {
-				// 	errors.Wrap(err, "could not sign oracle response")
-				// }
+				// TODO: convert the response to publishable data
+
+				signedRes, err := SignResponse(logger, "bitcoin", 69000000000)
+				if err != nil {
+					return errors.Wrap(err, "could not sign oracle response")
+				}
+
+				if err = aggregatorApp.Aggregator.ProcessSignedOracleResponse(signedRes); err != nil {
+					return errors.Wrap(err, "could not process signed oracle response")
+				}
 
 				// logger.Info().Any("signed_oracle_response", signedOracleResponse).Msg("oracle response signed")
 
 				// TODO: integrate aggrator components into head-node functionality
 
 				// TODO: on-chain submission of result(s)
+
 				return nil
 			}()
 			if err != nil {
@@ -388,40 +375,4 @@ func Middlewares(app *avs.CoreConfig) func(next http.Handler) http.Handler {
 	// TODO: Add more middlewares here.
 
 	return logging
-}
-
-func waitForServer(app *avs.CoreConfig, url string) {
-	for {
-		// Attempt to connect to the server.
-		resp, err := http.Get(url)
-		if err == nil && resp.StatusCode == http.StatusOK {
-			resp.Body.Close() // Don't forget to close the response body.
-			app.Logger.Info("App is Running. CTRL+C to quit.")
-			return
-		}
-		// Close the unsuccessful response body to avoid leaking resources.
-		if resp != nil {
-			resp.Body.Close()
-		}
-		// Wait for a second before trying again.
-		time.Sleep(1 * time.Second)
-	}
-}
-
-func openbrowser(app *avs.CoreConfig, url string) {
-	var err error
-
-	switch runtime.GOOS {
-	case "linux":
-		err = exec.Command("xdg-open", url).Start()
-	case "windows":
-		err = exec.Command("rundll32", "url.dll,FileProtocolHandler", url).Start()
-	case "darwin":
-		err = exec.Command("open", url).Start()
-	default:
-		err = fmt.Errorf("unsupported platform")
-	}
-	if err != nil {
-		app.Logger.Fatal("Failed to open browser", "err", err)
-	}
 }
