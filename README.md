@@ -99,7 +99,7 @@ See the integration tests [README](tests/anvil/README.md) for more details.
 
 ---
 
-## Local setup
+## Local setup (deprecated)
 
 ```sh
 make clean
@@ -128,26 +128,28 @@ git apply ../../../../../eigenlayer-contracts-holesky.diff
 cd -
 ```
 
-
-```sh
-make holesky-start-anvil-all-deployed
-make holesky-start-aggregator
-make holesky-cli-setup-operator
-
-make cli-run-avs
-curl -X POST -d '{ "symbol": "bitcoin" }' http://127.0.0.1:8080/v1/api/oracle
-```
-
-## Holesky Blockless AVS
+## Deploy Blockless AVS contracts to holesky testnet
 
 ```sh
 make blockless-holesky-deploy-avs
 ```
 
----
+Note: This has already been done, and is not required for the steps below.
+
+## Local setup (holesky forked)
+
+### Deploy contracts and run anvil holesky fork
 
 ```sh
-# run head node
+make clean
+make build-contracts
+make bindings
+make holesky-start-anvil-all-deployed
+```
+
+### Run aggregator - headnode
+
+```sh
 go run cli/*.go run-avs-aggregator \
   --role head \
   --function-db ./data/head/function-db \
@@ -155,11 +157,23 @@ go run cli/*.go run-avs-aggregator \
   --blockless-avs-deployment contracts/script/output/17000/blockless_avs_deployment_output.json \
   --ecdsa-private-key 0x2a871d0798f97d79848a013d4936a73bf4cc922c825d33c1cf7073dff6d409c6 \
   2>&1 | zap-pretty
+```
 
+### Setup operator
+
+```sh
+make holesky-cli-setup-operator
+```
+
+### Run operator - worker node
+
+```sh
 # run worker node - using exposed peer id from head node
 P2P_ID=$(curl -s http://localhost:6000/api/v1/meta | jq -r .peer_id)
 go run cli/*.go run-avs-operator --boot-nodes "/ip4/127.0.0.1/tcp/6000/p2p/$P2P_ID" --port 6010
 ```
+
+### Request oracle price update
 
 ```sh
 # oracle price request
