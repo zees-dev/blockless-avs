@@ -5,7 +5,7 @@ import (
 
 	csavs "github.com/zees-dev/blockless-avs/contracts/bindings/BlocklessAVS"
 	erc20mock "github.com/zees-dev/blockless-avs/contracts/bindings/ERC20Mock"
-	"github.com/zees-dev/blockless-avs/core/config"
+	"github.com/zees-dev/blockless-avs/core"
 
 	"github.com/ethereum/go-ethereum/accounts/abi/bind"
 	gethcommon "github.com/ethereum/go-ethereum/common"
@@ -32,7 +32,7 @@ type AvsReader struct {
 
 var _ AvsReaderer = (*AvsReader)(nil)
 
-func BuildAvsReaderFromConfig(c *config.Config) (*AvsReader, error) {
+func BuildAvsReaderFromConfig(c *core.Config) (*AvsReader, error) {
 	return BuildAvsReader(c.BlocklessAVSRegistryCoordinatorAddr, c.OperatorStateRetrieverAddr, *c.EthHttpClient, c.Logger)
 }
 func BuildAvsReader(registryCoordinatorAddr, operatorStateRetrieverAddr gethcommon.Address, ethHttpClient eth.Client, logger logging.Logger) (*AvsReader, error) {

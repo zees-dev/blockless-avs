@@ -2,7 +2,7 @@ package chainio
 
 import (
 	csavs "github.com/zees-dev/blockless-avs/contracts/bindings/BlocklessAVS"
-	"github.com/zees-dev/blockless-avs/core/config"
+	"github.com/zees-dev/blockless-avs/core"
 
 	"github.com/ethereum/go-ethereum/accounts/abi/bind"
 	gethcommon "github.com/ethereum/go-ethereum/common"
@@ -25,7 +25,7 @@ type AvsSubscriber struct {
 	logger              sdklogging.Logger
 }
 
-func BuildAvsSubscriberFromConfig(config *config.Config) (*AvsSubscriber, error) {
+func BuildAvsSubscriberFromConfig(config *core.Config) (*AvsSubscriber, error) {
 	return BuildAvsSubscriber(
 		config.BlocklessAVSRegistryCoordinatorAddr,
 		config.OperatorStateRetrieverAddr,

@@ -5,13 +5,14 @@ import (
 	"sync"
 	"time"
 
-	"github.com/zees-dev/blockless-avs/aggregator/types"
+	"github.com/ethereum/go-ethereum/common"
+	"github.com/pkg/errors"
 	csavs "github.com/zees-dev/blockless-avs/contracts/bindings/BlocklessAVS"
 	"github.com/zees-dev/blockless-avs/core"
 	"github.com/zees-dev/blockless-avs/core/chainio"
-	"github.com/zees-dev/blockless-avs/core/config"
 
 	"github.com/Layr-Labs/eigensdk-go/chainio/clients"
+	"github.com/Layr-Labs/eigensdk-go/crypto/bls"
 	"github.com/Layr-Labs/eigensdk-go/logging"
 	"github.com/Layr-Labs/eigensdk-go/services/avsregistry"
 	blsagg "github.com/Layr-Labs/eigensdk-go/services/bls_aggregation"
@@ -26,7 +27,21 @@ const (
 	taskChallengeWindowBlock = 100
 	blockTimeSeconds         = 12 * time.Second
 	avsName                  = "blocklessAVS"
+
+	QUORUM_THRESHOLD_NUMERATOR   = sdktypes.QuorumThresholdPercentage(100)
+	QUORUM_THRESHOLD_DENOMINATOR = sdktypes.QuorumThresholdPercentage(100)
+	QUERY_FILTER_FROM_BLOCK      = uint64(1)
 )
+
+// we only use a single quorum (quorum 0) for blockless-avs
+var QUORUM_NUMBERS = sdktypes.QuorumNums{0}
+
+type BlockNumber = uint32
+type TaskIndex = uint32
+type OperatorInfo struct {
+	OperatorPubkeys sdktypes.OperatorPubkeys
+	OperatorAddr    common.Address
+}
 
 // Aggregator sends tasks (numbers to square) onchain, then listens for operator signed TaskResponses.
 // It aggregates responses signatures, and if any of the TaskResponses reaches the QuorumThresholdPercentage for each quorum
@@ -71,15 +86,15 @@ type Aggregator struct {
 	blsAggregationService blsagg.BlsAggregationService
 
 	// oracle price related fields
-	oracleRequestIndex  types.TaskIndex
-	prices              map[types.TaskIndex]csavs.IBlocklessAVSPrice
-	oracleResponses     map[types.TaskIndex]map[sdktypes.TaskResponseDigest]csavs.IBlocklessAVSOracleRequest
+	oracleRequestIndex  TaskIndex
+	prices              map[TaskIndex]csavs.IBlocklessAVSPrice
+	oracleResponses     map[TaskIndex]map[sdktypes.TaskResponseDigest]csavs.IBlocklessAVSOracleRequest
 	oracleResponsesMu   sync.RWMutex
 	oracleResponsesChan chan *csavs.ContractBlocklessAVSOracleUpdate
 }
 
 // NewAggregator creates a new Aggregator with the provided config.
-func NewAggregator(c *config.Config) (*Aggregator, error) {
+func NewAggregator(c *core.Config) (*Aggregator, error) {
 
 	avsReader, err := chainio.BuildAvsReaderFromConfig(c)
 	if err != nil {
@@ -124,16 +139,14 @@ func NewAggregator(c *config.Config) (*Aggregator, error) {
 		avsSubscriber:         avsSubscriber,
 		blsAggregationService: blsAggregationService,
 
-		prices:              make(map[types.TaskIndex]csavs.IBlocklessAVSPrice),
-		oracleResponses:     make(map[types.TaskIndex]map[sdktypes.TaskResponseDigest]csavs.IBlocklessAVSOracleRequest),
+		prices:              make(map[TaskIndex]csavs.IBlocklessAVSPrice),
+		oracleResponses:     make(map[TaskIndex]map[sdktypes.TaskResponseDigest]csavs.IBlocklessAVSOracleRequest),
 		oracleResponsesChan: make(chan *csavs.ContractBlocklessAVSOracleUpdate),
 	}, nil
 }
 
 func (agg *Aggregator) Start(ctx context.Context) error {
 	agg.logger.Infof("Starting aggregator")
-	agg.logger.Infof("Starting aggregator rpc server.")
-	go agg.startServer(ctx)
 
 	subOracleUpdates := agg.avsSubscriber.SubscribeToOracleUpdateResponses(agg.oracleResponsesChan)
 	for {
@@ -192,4 +205,97 @@ func (agg *Aggregator) sendAggregatedOracleResponseToContract(blsAggServiceResp 
 	if err != nil {
 		agg.logger.Error("Aggregator failed to respond to task", "err", err)
 	}
+}
+
+type SignedOracleResponse struct {
+	PriceResponse csavs.IBlocklessAVSPrice
+	BlsSignature  bls.Signature
+	OperatorId    sdktypes.OperatorId
+}
+
+func (agg *Aggregator) ProcessSignedOracleResponse(signedOracleResponse *SignedOracleResponse) error {
+	agg.logger.Infof("Received signed oracle response: %#v", signedOracleResponse)
+
+	oracleResponseDigest, err := core.GetPriceDigest(&signedOracleResponse.PriceResponse)
+	if err != nil {
+		return errors.Wrap(err, "Failed to get oracle response digest")
+	}
+
+	oracleReq, err := agg.processOracleUpdateRequest(signedOracleResponse)
+	if err != nil {
+		return errors.Wrap(err, "Failed to process oracle update request")
+	}
+
+	agg.oracleResponsesMu.Lock()
+	if _, ok := agg.oracleResponses[agg.oracleRequestIndex]; !ok {
+		agg.oracleResponses[agg.oracleRequestIndex] = make(map[sdktypes.TaskResponseDigest]csavs.IBlocklessAVSOracleRequest)
+	}
+	if _, ok := agg.oracleResponses[agg.oracleRequestIndex][oracleResponseDigest]; !ok {
+		agg.oracleResponses[agg.oracleRequestIndex][oracleResponseDigest] = *oracleReq
+	}
+	agg.oracleResponsesMu.Unlock()
+
+	err = agg.blsAggregationService.ProcessNewSignature(
+		context.Background(), agg.oracleRequestIndex, oracleResponseDigest,
+		&signedOracleResponse.BlsSignature, signedOracleResponse.OperatorId,
+	)
+	if err != nil {
+		return errors.Wrap(err, "Failed to process new signature")
+	}
+
+	return nil
+}
+
+func (agg *Aggregator) processOracleUpdateRequest(signedOracleResponse *SignedOracleResponse) (*csavs.IBlocklessAVSOracleRequest, error) {
+	currentBlock, err := agg.clients.EthHttpClient.BlockNumber(context.Background())
+	if err != nil {
+		agg.logger.Error("Failed to get current block number", "err", err)
+		return nil, err
+	}
+
+	// TODO: this may need to be provided from the oeprator
+	quorumNumbers := QUORUM_NUMBERS
+	quorumThresholdPercentage := QUORUM_THRESHOLD_NUMERATOR
+
+	// TODO: remove this afterwards
+	// explicitly convert QuorumNums to []byte
+	byteSlice := make([]byte, len(quorumNumbers))
+	for i, num := range quorumNumbers {
+		byteSlice[i] = byte(num) // Explicit conversion from QuorumNum (uint8) to byte
+	}
+
+	agg.oracleResponsesMu.Lock()
+	agg.prices[agg.oracleRequestIndex] = signedOracleResponse.PriceResponse
+	agg.oracleResponsesMu.Unlock()
+
+	// TODO: introduce `QuorumNumbers []byte and QuorumThresholdPercentage uint32` to the initial HTTP POST request
+	quorumThresholdPercentages := make(sdktypes.QuorumThresholdPercentages, len(quorumNumbers))
+	for i := range quorumNumbers {
+		quorumThresholdPercentages[i] = sdktypes.QuorumThresholdPercentage(quorumThresholdPercentage)
+	}
+	// TODO(samlaf): we use seconds for now, but we should ideally pass a blocknumber to the blsAggregationService
+	// and it should monitor the chain and only expire the task aggregation once the chain has reached that block number.
+	taskTimeToExpiry := taskChallengeWindowBlock * blockTimeSeconds
+	var quorumNums sdktypes.QuorumNums
+	for _, quorumNum := range quorumNumbers {
+		quorumNums = append(quorumNums, sdktypes.QuorumNum(quorumNum))
+	}
+	err = agg.blsAggregationService.InitializeNewTask(
+		agg.oracleRequestIndex,
+		uint32(currentBlock),
+		quorumNums,
+		quorumThresholdPercentages,
+		taskTimeToExpiry,
+	)
+	if err != nil {
+		agg.logger.Error("Failed to initialize new task", "err", err)
+		return nil, err
+	}
+
+	return &csavs.IBlocklessAVSOracleRequest{
+		Symbol:                    signedOracleResponse.PriceResponse.Symbol,
+		ReferenceBlockNumber:      uint32(currentBlock),
+		QuorumNumbers:             byteSlice,
+		QuorumThresholdPercentage: uint8(quorumThresholdPercentage),
+	}, nil
 }

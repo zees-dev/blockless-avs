@@ -10,7 +10,6 @@ import (
 	"crypto/ecdsa"
 	"encoding/hex"
 	"encoding/json"
-	"fmt"
 	"math/big"
 
 	"github.com/ethereum/go-ethereum/accounts/abi/bind"
@@ -26,8 +25,7 @@ func (o *Operator) registerOperatorOnStartup(
 	operatorEcdsaPrivateKey *ecdsa.PrivateKey,
 	mockTokenStrategyAddr common.Address,
 ) {
-	err := o.RegisterOperatorWithEigenlayer()
-	if err != nil {
+	if err := o.RegisterOperatorWithEigenlayer(); err != nil {
 		// This error might only be that the operator was already registered with eigenlayer, so we don't want to fatal
 		o.logger.Error("Error registering operator with eigenlayer", "err", err)
 	} else {
@@ -36,14 +34,12 @@ func (o *Operator) registerOperatorOnStartup(
 
 	// TODO(samlaf): shouldn't hardcode number here
 	amount := big.NewInt(1000)
-	err = o.DepositIntoStrategy(mockTokenStrategyAddr, amount)
-	if err != nil {
+	if err := o.DepositIntoStrategy(mockTokenStrategyAddr, amount); err != nil {
 		o.logger.Fatal("Error depositing into strategy", "err", err)
 	}
 	o.logger.Infof("Deposited %s into strategy %s", amount, mockTokenStrategyAddr)
 
-	err = o.RegisterOperatorWithAvs(operatorEcdsaPrivateKey)
-	if err != nil {
+	if err := o.RegisterOperatorWithAvs(operatorEcdsaPrivateKey); err != nil {
 		o.logger.Fatal("Error registering operator with avs", "err", err)
 	}
 	o.logger.Infof("Registered operator with avs")
@@ -54,8 +50,8 @@ func (o *Operator) RegisterOperatorWithEigenlayer() error {
 		Address:                 o.operatorAddr.String(),
 		EarningsReceiverAddress: o.operatorAddr.String(),
 	}
-	_, err := o.eigenlayerWriter.RegisterAsOperator(context.Background(), op)
-	if err != nil {
+
+	if _, err := o.eigenlayerWriter.RegisterAsOperator(context.Background(), op); err != nil {
 		o.logger.Error("Error registering operator with eigenlayer", "err", err)
 		return err
 	}
@@ -74,6 +70,10 @@ func (o *Operator) DepositIntoStrategy(strategyAddr common.Address, amount *big.
 		return err
 	}
 	txOpts, err := o.avsWriter.TxMgr.GetNoSendTxOpts()
+	if err != nil {
+		o.logger.Errorf("Error getting txOpts")
+		return err
+	}
 	tx, err := contractErc20Mock.Mint(txOpts, o.operatorAddr, amount)
 	if err != nil {
 		o.logger.Errorf("Error assembling Mint tx")
@@ -95,9 +95,7 @@ func (o *Operator) DepositIntoStrategy(strategyAddr common.Address, amount *big.
 
 // Registration specific functions
 // TODO: address this for actual holesky testnet deployment
-func (o *Operator) RegisterOperatorWithAvs(
-	operatorEcdsaKeyPair *ecdsa.PrivateKey,
-) error {
+func (o *Operator) RegisterOperatorWithAvs(operatorEcdsaKeyPair *ecdsa.PrivateKey) error {
 	// hardcode these things for now
 	quorumNumbers := eigenSdkTypes.QuorumNums{eigenSdkTypes.QuorumNum(0)}
 	socket := "Not Needed"
@@ -153,7 +151,7 @@ type OperatorStatus struct {
 }
 
 func (o *Operator) PrintOperatorStatus() error {
-	fmt.Println("Printing operator status")
+	o.logger.Info("Printing operator status..")
 	operatorId, err := o.avsReader.GetOperatorId(&bind.CallOpts{}, o.operatorAddr)
 	if err != nil {
 		return err
@@ -172,7 +170,7 @@ func (o *Operator) PrintOperatorStatus() error {
 	if err != nil {
 		return err
 	}
-	fmt.Println(string(operatorStatusJson))
+	o.logger.Info(string(operatorStatusJson))
 	return nil
 }
 

@@ -23,8 +23,7 @@ clean:
 	cd contracts && forge clean && rm -rf cache && rm -rf script/output
 
 clean-node:
-	rm -rf ./node/peer-db/
-	rm -rf ./node/function-db/
+	rm -rf ./data
 
 ___CONTRACTS___: ## 
 ## Deploy all contracts, start anvil with deployed contracts
